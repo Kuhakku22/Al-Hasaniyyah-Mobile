@@ -1,0 +1,191 @@
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import React, { useState } from 'react';
+import { RefreshControl, ScrollView, StatusBar, Text, TouchableOpacity, View, Image } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+export default function Home() {
+  const router = useRouter();
+  const [refreshing, setRefreshing] = useState(false);
+  const [notifications, setNotifications] = useState(1);
+  const [showBalance, setShowBalance] = useState(true);
+
+  const onRefresh = React.useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => {
+      setRefreshing(false);
+    }, 2000);
+  }, []);
+
+  const features = [
+    { title: 'Transfer', icon: 'send', route: '/infak', color: '#00A39D', bg: 'bg-teal-50' },
+    { title: 'Iuran', icon: 'wallet', route: '/iuran', color: '#3b82f6', bg: 'bg-blue-50' },
+    { title: 'Kegiatan', icon: 'calendar', route: '/kegiatan', color: '#f59e0b', bg: 'bg-amber-50' },
+    { title: 'Berita', icon: 'newspaper', route: '/berita', color: '#6366f1', bg: 'bg-indigo-50' },
+    { title: 'AD/ART', icon: 'document-text', route: '/adart', color: '#8b5cf6', bg: 'bg-violet-50' },
+    { title: 'Laporan', icon: 'pie-chart', route: '/laporan', color: '#ec4899', bg: 'bg-pink-50' },
+    { title: 'Direktori', icon: 'people', route: '/direktori', color: '#0ea5e9', bg: 'bg-sky-50' },
+    { title: 'Musyawarah', icon: 'chatbubbles', route: '/musyawarah', color: '#10b981', bg: 'bg-emerald-50' },
+    { title: 'Loker', icon: 'briefcase', route: '/loker', color: '#f59e0b', bg: 'bg-amber-50' },
+    { title: 'Market', icon: 'cart', route: '/marketplace', color: '#ef4444', bg: 'bg-red-50' },
+    { title: 'Pustaka', icon: 'library', route: '/perpustakaan', color: '#14b8a6', bg: 'bg-teal-50' },
+    { title: 'Konsultasi', icon: 'headset', route: '/konsultasi', color: '#8b5cf6', bg: 'bg-violet-50' },
+  ];
+
+  return (
+    <View className="flex-1 bg-slate-50">
+      <StatusBar barStyle="light-content" backgroundColor="#064e3b" />
+      
+      {/* Absolute Background Layers (BSI Byond Style) */}
+      <View className="absolute top-0 left-0 right-0 h-64 bg-emerald-900 rounded-b-[40px]" />
+      <View className="absolute top-56 left-0 right-0 h-20 bg-amber-500 opacity-90 rounded-b-[60px] -z-10" />
+
+      <SafeAreaView className="flex-1" edges={['top']}>
+        <ScrollView 
+          className="flex-1"
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" />}
+        >
+          {/* Top Header (Logo & Icons) */}
+          <View className="flex-row justify-between items-center px-5 pt-2 mb-6">
+            <View className="flex-row items-center gap-2">
+              <View className="w-8 h-8 flex items-center justify-center">
+                <Image source={require('@/assets/images/icon.png')} style={{width: '100%', height: '100%'}} resizeMode="contain" />
+              </View>
+              <Text className="text-white font-black text-xl tracking-wider">AL HASANIYYAH</Text>
+            </View>
+            
+            <View className="flex-row gap-4">
+              <TouchableOpacity onPress={() => router.push('/notifikasi' as any)} className="relative">
+                <Ionicons name="notifications-outline" size={26} color="#fff" />
+                {notifications > 0 && (
+                  <View className="absolute 1 right-0 w-3 h-3 bg-red-500 rounded-full border border-emerald-900" />
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => router.replace('/')}>
+                <Ionicons name="log-out-outline" size={26} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* User Info */}
+          <View className="px-5 mb-6 flex-row items-center gap-3">
+            <View className="w-12 h-12 rounded-full bg-emerald-700 items-center justify-center border-2 border-emerald-500/50">
+              <Text className="text-white font-bold text-lg">AL</Text>
+            </View>
+            <Text className="text-white font-bold text-lg">Ahmad Ali</Text>
+          </View>
+
+          {/* Floating Main Card (Saldo / Total Infak) */}
+          <View className="px-4 mb-6">
+            <View className="bg-white rounded-3xl p-5 shadow-lg elevation-5 overflow-hidden border border-slate-100">
+              {/* Decorative graphic at top right (Simulated with absolute view) */}
+              <View className="absolute -top-10 -right-10 w-40 h-40 bg-amber-400/20 rounded-full" />
+              <View className="absolute -top-5 -right-5 w-20 h-20 bg-amber-500/20 rounded-full" />
+              
+              <View className="flex-row items-center gap-1 mb-2">
+                <Text className="text-slate-800 font-bold text-sm">Total Iuran Wajib Bulan Ini</Text>
+                <Ionicons name="chevron-forward" size={16} color="#334155" />
+              </View>
+              <Text className="text-slate-400 text-xs mb-4">Periode Agustus 2026</Text>
+              
+              <View className="flex-row items-center gap-3">
+                <Text className="text-slate-900 font-black text-3xl">
+                  {showBalance ? 'Rp 17.588.500' : 'Rp ••••••••••'}
+                </Text>
+                <TouchableOpacity onPress={() => setShowBalance(!showBalance)}>
+                  <Ionicons name={showBalance ? 'eye-outline' : 'eye-off-outline'} size={24} color="#64748b" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+
+          {/* Circular Menu Grid (4 Columns) */}
+          <View className="px-2 mb-6">
+            <View className="flex-row flex-wrap justify-start">
+              {features.map((feature, index) => (
+                <TouchableOpacity 
+                  key={index}
+                  onPress={() => router.push(feature.route as any)}
+                  className="w-[25%] items-center mb-6"
+                >
+                  <View className={`w-14 h-14 rounded-full ${feature.bg} items-center justify-center mb-2 shadow-sm`}>
+                    <Ionicons name={feature.icon as any} size={26} color={feature.color} />
+                  </View>
+                  <Text className="text-[11px] font-bold text-slate-700 text-center px-1" numberOfLines={1}>
+                    {feature.title}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* E-Wallet / Quick Info Section */}
+          <View className="px-5 mb-8">
+            <View className="flex-row justify-between items-center mb-4">
+              <Text className="text-slate-800 font-bold text-sm">Info Penting</Text>
+              <TouchableOpacity><Text className="text-amber-600 font-bold text-xs">Atur</Text></TouchableOpacity>
+            </View>
+            
+            <View className="flex-row gap-3">
+              <View className="bg-white p-3 rounded-2xl flex-1 shadow-sm border border-slate-200 elevation-2">
+                <View className="flex-row items-center gap-2 mb-2">
+                  <View className="bg-blue-100 p-1.5 rounded-lg"><Ionicons name="newspaper" size={16} color="#2563eb" /></View>
+                  <Text className="font-bold text-slate-800 text-xs">Berita</Text>
+                </View>
+                <Text className="text-slate-500 text-[10px]">Silaturahmi Nasional 2026 Segera Hadir</Text>
+              </View>
+              
+              <View className="bg-white p-3 rounded-2xl flex-1 shadow-sm border border-slate-200 elevation-2">
+                <View className="flex-row items-center gap-2 mb-2">
+                  <View className="bg-amber-100 p-1.5 rounded-lg"><Ionicons name="calendar" size={16} color="#d97706" /></View>
+                  <Text className="font-bold text-slate-800 text-xs">Agenda</Text>
+                </View>
+                <Text className="text-slate-500 text-[10px]">Al Hikam - 6 Ags 2026</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Favorit / Kontak Cepat Section */}
+          <View className="px-5 mb-10">
+            <View className="flex-row justify-between items-center mb-4">
+              <Text className="text-slate-800 font-bold text-sm">Riwayat Transaksi Terbaru</Text>
+              <TouchableOpacity><Text className="text-amber-600 font-bold text-xs">Lihat Semua</Text></TouchableOpacity>
+            </View>
+            
+            <View className="bg-white rounded-3xl p-4 shadow-sm border border-slate-100 elevation-2">
+              <View className="flex-row items-center justify-between mb-4">
+                <View className="flex-row items-center gap-3">
+                  <View className="w-10 h-10 rounded-full bg-indigo-100 items-center justify-center">
+                    <Text className="text-indigo-700 font-bold">IW</Text>
+                  </View>
+                  <View>
+                    <Text className="text-slate-800 font-bold text-sm">Iuran Wajib Juli</Text>
+                    <Text className="text-slate-400 text-[10px]">Bank Transfer - Berhasil</Text>
+                  </View>
+                </View>
+                <Text className="text-emerald-600 font-bold text-sm">Rp 25.000</Text>
+              </View>
+              
+              <View className="h-px bg-slate-100 mb-4" />
+              
+              <View className="flex-row items-center justify-between">
+                <View className="flex-row items-center gap-3">
+                  <View className="w-10 h-10 rounded-full bg-emerald-100 items-center justify-center">
+                    <Text className="text-emerald-700 font-bold">IF</Text>
+                  </View>
+                  <View>
+                    <Text className="text-slate-800 font-bold text-sm">Infak Beasiswa</Text>
+                    <Text className="text-slate-400 text-[10px]">QRIS - Berhasil</Text>
+                  </View>
+                </View>
+                <Text className="text-emerald-600 font-bold text-sm">Rp 100.000</Text>
+              </View>
+            </View>
+          </View>
+          
+        </ScrollView>
+      </SafeAreaView>
+    </View>
+  );
+}
