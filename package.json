@@ -3,8 +3,6 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "cd mobile && npx expo export -p web",
-    "build:mobile": "cd mobile && npx expo export -p web",
-    "build:admin": "cd admin && npm run build"
+    "build": "cd admin && npm run build"
   }
 }
