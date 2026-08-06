@@ -1,4 +1,0 @@
-{
-  "buildCommand": "cd mobile && npx expo export -p web",
-  "outputDirectory": "mobile/dist"
-}
