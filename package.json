@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "cd admin && npm install && npm run build && node -e \"require('fs').cpSync('admin/.next', '.next', {recursive: true})\""
+    "build": "cd admin && npm install && npm run build && node -e \"require('fs').cpSync('.next', '../.next', {recursive: true})\""
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.40.0",
