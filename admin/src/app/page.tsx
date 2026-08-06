@@ -187,7 +187,7 @@ export default function AdminPortal() {
   }, [isLoggedIn]);
 
   // Action: Approve Alumni
-  const handleApproveAlumni = async (id: string, phone: string) => {
+  const handleApproveAlumni = async (id: string, phone?: string | null) => {
     const rawNia = editingNia[id] || "";
     if (!rawNia.trim()) {
       alert("Silakan masukkan Nomor Induk Anggota (NIA) terlebih dahulu.");
@@ -545,7 +545,7 @@ export default function AdminPortal() {
                             <tr key={i.id} className="border-b border-slate-800/50 hover:bg-slate-800/30">
                               <td className="py-3 px-4 font-bold text-white">{i.nama_lengkap}</td>
                               <td className="py-3 px-4 text-slate-300">{i.periode}</td>
-                              <td className="py-3 px-4 font-mono font-bold text-white">Rp {parseFloat(i.nominal || 0).toLocaleString("id-ID")}</td>
+                              <td className="py-3 px-4 font-mono font-bold text-white">Rp {(Number(i.nominal) || 0).toLocaleString("id-ID")}</td>
                               <td className="py-3 px-4">
                                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                                   i.status === "lunas"
@@ -607,7 +607,7 @@ export default function AdminPortal() {
                                   {inf.kategori ? inf.kategori.replace("_", " ") : "UMUM"}
                                 </span>
                               </td>
-                              <td className="py-3 px-4 font-mono font-bold text-emerald-400">Rp {parseFloat(inf.nominal || 0).toLocaleString("id-ID")}</td>
+                              <td className="py-3 px-4 font-mono font-bold text-emerald-400">Rp {(Number(inf.nominal) || 0).toLocaleString("id-ID")}</td>
                                <td className="py-3 px-4 text-slate-300 italic font-medium">
                                  &quot;{inf.pesan || "Tanpa pesan"}&quot;
                                </td>
