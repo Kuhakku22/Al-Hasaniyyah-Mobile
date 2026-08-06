@@ -50,14 +50,12 @@ export default function Home() {
   };
 
   const features = [
-    { title: 'Transfer', icon: 'send', route: '/infak', color: '#00A39D', bg: 'bg-teal-50' },
-    { title: 'Iuran', icon: 'wallet', route: '/iuran', color: '#3b82f6', bg: 'bg-blue-50' },
+    { title: 'Pembayaran', icon: 'card-outline', route: '/infak', color: '#00A39D', bg: 'bg-teal-50' },
     { title: 'Kegiatan', icon: 'calendar', route: '/kegiatan', color: '#f59e0b', bg: 'bg-amber-50' },
     { title: 'Berita', icon: 'newspaper', route: '/berita', color: '#6366f1', bg: 'bg-indigo-50' },
     { title: 'AD/ART', icon: 'document-text', route: '/adart', color: '#8b5cf6', bg: 'bg-violet-50' },
     { title: 'Laporan', icon: 'pie-chart', route: '/laporan', color: '#ec4899', bg: 'bg-pink-50' },
     { title: 'Direktori', icon: 'people', route: '/direktori', color: '#0ea5e9', bg: 'bg-sky-50' },
-    { title: 'Musyawarah', icon: 'chatbubbles', route: '/musyawarah', color: '#10b981', bg: 'bg-emerald-50' },
     { title: 'Loker', icon: 'briefcase', route: '/loker', color: '#f59e0b', bg: 'bg-amber-50' },
     { title: 'Market', icon: 'cart', route: '/marketplace', color: '#ef4444', bg: 'bg-red-50' },
     { title: 'Pustaka', icon: 'library', route: '/perpustakaan', color: '#14b8a6', bg: 'bg-teal-50' },
@@ -117,26 +115,34 @@ export default function Home() {
             </View>
           </View>
 
-          {/* Floating Main Card (Saldo / Total Infak) */}
+          {/* Kartu Keanggotaan Alumni (Menggantikan Tampilan Nominal Sensitif) */}
           <View className="px-4 mb-6">
-            <View className="bg-white rounded-3xl p-5 shadow-lg elevation-5 overflow-hidden border border-slate-100">
-              {/* Decorative graphic at top right (Simulated with absolute view) */}
-              <View className="absolute -top-10 -right-10 w-40 h-40 bg-amber-400/20 rounded-full" />
-              <View className="absolute -top-5 -right-5 w-20 h-20 bg-amber-500/20 rounded-full" />
+            <View className="bg-white rounded-3xl p-5 shadow-lg elevation-5 overflow-hidden border border-slate-100 relative">
+              {/* Ornamen Estetik */}
+              <View className="absolute -top-10 -right-10 w-40 h-40 bg-emerald-600/10 rounded-full" />
+              <View className="absolute -top-5 -right-5 w-20 h-20 bg-amber-500/15 rounded-full" />
               
-              <View className="flex-row items-center gap-1 mb-2">
-                <Text className="text-slate-800 font-bold text-sm">Total Iuran Wajib Bulan Ini</Text>
-                <Ionicons name="chevron-forward" size={16} color="#334155" />
+              <View className="flex-row justify-between items-center mb-3">
+                <View className="flex-row items-center gap-2">
+                  <Ionicons name="shield-checkmark" size={20} color="#059669" />
+                  <Text className="text-slate-800 font-bold text-sm">Kartu Keanggotaan Alumni</Text>
+                </View>
+                <View className="bg-emerald-100 px-3 py-1 rounded-full">
+                  <Text className="text-emerald-800 text-[10px] font-bold">Terverifikasi</Text>
+                </View>
               </View>
-              <Text className="text-slate-400 text-xs mb-4">Periode Agustus 2026</Text>
+
+              <Text className="text-slate-400 text-xs mb-3">Pondok Pesantren Dalwa</Text>
               
-              <View className="flex-row items-center gap-3">
-                <Text className="text-slate-900 font-black text-3xl">
-                  {showBalance ? 'Rp 17.588.500' : 'Rp ••••••••••'}
-                </Text>
-                <TouchableOpacity onPress={() => setShowBalance(!showBalance)}>
-                  <Ionicons name={showBalance ? 'eye-outline' : 'eye-off-outline'} size={24} color="#64748b" />
-                </TouchableOpacity>
+              <View className="flex-row justify-between items-end border-t border-slate-100 pt-3">
+                <View>
+                  <Text className="text-slate-500 text-[11px]">Nama Alumni</Text>
+                  <Text className="text-slate-900 font-bold text-base">{userProfile?.nama_lengkap || 'Alumni Dalwa'}</Text>
+                </View>
+                <View className="items-end">
+                  <Text className="text-slate-500 text-[11px]">Nomor Induk (NIA)</Text>
+                  <Text className="text-emerald-700 font-bold text-base">{userProfile?.nomor_id_unik || '123456'}</Text>
+                </View>
               </View>
             </View>
           </View>

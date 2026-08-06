@@ -7,10 +7,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
 
 const INFAK_CATEGORIES = [
-  { id: "umum", label: "Infak Umum", desc: "Untuk kebutuhan operasional dan program umum" },
-  { id: "beasiswa", label: "Beasiswa Santri", desc: "Dukung pendidikan santri berprestasi/kurang mampu" },
-  { id: "pembangunan", label: "Pembangunan", desc: "Wakaf pembangunan fasilitas asrama & kelas" },
-  { id: "bansos", label: "Bantuan Sosial", desc: "Program bantuan kemanusiaan & kebencanaan" },
+  { id: "iuran_wajib", label: "Iuran Wajib Alumni", desc: "Iuran rutin wajib bulanan untuk keanggotaan alumni" },
+  { id: "iuran_multaqo", label: "Iuran Multaqo", desc: "Iuran partisipasi untuk kegiatan Multaqo Alumni" },
+  { id: "iuran_alhikam", label: "Iuran Pengajian Al-Hikam", desc: "Iuran operasional & infak Pengajian Rutin Al-Hikam" },
 ];
 
 export default function InfakScreen() {
@@ -18,7 +17,7 @@ export default function InfakScreen() {
   const [alumniId, setAlumniId] = useState<string | null>(null);
   const [step, setStep] = useState(1);
   const [selectedCat, setSelectedCat] = useState(INFAK_CATEGORIES[0]);
-  const [amount, setAmount] = useState('10000');
+  const [amount, setAmount] = useState('20000');
   const [payMethod, setPayMethod] = useState('qris');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -48,11 +47,8 @@ export default function InfakScreen() {
     }
 
     try {
-      const ref = 'INF-' + Math.random().toString(36).substr(2, 9).toUpperCase();
-      let dbKategori = 'infak_umum';
-      if (selectedCat.id === 'beasiswa') dbKategori = 'beasiswa';
-      else if (selectedCat.id === 'pembangunan') dbKategori = 'pembangunan';
-      else if (selectedCat.id === 'bansos') dbKategori = 'bansos';
+      const ref = 'PAY-' + Math.random().toString(36).substr(2, 9).toUpperCase();
+      let dbKategori = selectedCat.id;
 
       const { error } = await supabase
         .from('transaksi_infak')
@@ -73,7 +69,7 @@ export default function InfakScreen() {
       setIsProcessing(false);
       setIsSuccess(true);
     } catch (e: any) {
-      alert('Transaksi infak gagal: ' + e.message);
+      alert('Transaksi pembayaran gagal: ' + e.message);
       setIsProcessing(false);
     }
   };
@@ -85,7 +81,7 @@ export default function InfakScreen() {
         <TouchableOpacity onPress={() => router.back()} className="mr-3">
           <Ionicons name="arrow-back" size={24} color="#94a3b8" />
         </TouchableOpacity>
-        <Text className="text-white font-bold text-lg">Fitur Infak Mandiri</Text>
+        <Text className="text-white font-bold text-lg">Pembayaran & Iuran Alumni</Text>
       </View>
 
       <ScrollView className="flex-1 p-4">
