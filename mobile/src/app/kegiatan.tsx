@@ -1,26 +1,70 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Animated } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { supabase } from '@/lib/supabase';
 
 // Mock Data Tanggal Hari Ini (Anggap saja hari ini 3 Agustus 2026 untuk simulasi H-3)
 const TODAY = new Date('2026-08-03');
-
-const AGENDA_DATA = [
-  { id: 1, title: "Pengajian Al Hikam (Jum'at Legi)", date: "2026-08-06", time: "18:00 WIB", location: "PP. Darullughah Wadda'wah", type: "rutin" },
-  { id: 2, title: "Multaqo Nasional (Reuni Akbar)", date: "2026-08-20", time: "08:00 WIB", location: "Pasuruan, Jawa Timur", type: "besar" },
-  { id: 3, title: "Pengajian Al Hikam (Jum'at Legi)", date: "2026-09-10", time: "18:00 WIB", location: "PP. Darullughah Wadda'wah", type: "rutin" },
-  { id: 4, title: "Pengajian Al Hikam (Jum'at Legi)", date: "2026-10-15", time: "18:00 WIB", location: "PP. Darullughah Wadda'wah", type: "rutin" },
-  { id: 5, title: "Pengajian Al Hikam (Jum'at Legi)", date: "2026-11-19", time: "18:00 WIB", location: "PP. Darullughah Wadda'wah", type: "rutin" },
-  { id: 6, title: "Pengajian Al Hikam (Jum'at Legi)", date: "2026-12-24", time: "18:00 WIB", location: "PP. Darullughah Wadda'wah", type: "rutin" },
-  { id: 7, title: "Mukernas (Musyawarah Kerja Nasional)", date: "2027-08-15", time: "09:00 WIB", location: "Jakarta", type: "besar" },
-];
 
 export default function KegiatanScreen() {
   const router = useRouter();
   const [selectedMonth, setSelectedMonth] = useState(8); // Default Agustus
   const [selectedYear, setSelectedYear] = useState(2026);
+  const [agendaData, setAgendaData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchEvents = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('event')
+        .select('*')
+        .order('tanggal', { ascending: true });
+
+      if (error) {
+        throw error;
+      }
+
+      const formatted = (data || []).map((item: any) => {
+        const dateObj = new Date(item.tanggal);
+        const yyyy = dateObj.getFullYear();
+        const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const dd = String(dateObj.getDate()).padStart(2, '0');
+        const dateStr = `${yyyy}-${mm}-${dd}`;
+        
+        const hh = String(dateObj.getHours()).padStart(2, '0');
+        const min = String(dateObj.getMinutes()).padStart(2, '0');
+        const timeStr = `${hh}:${min} WIB`;
+
+        const isBesar = item.judul.toLowerCase().includes('akbar') || 
+                        item.judul.toLowerCase().includes('nasional') || 
+                        item.judul.toLowerCase().includes('reuni') || 
+                        item.judul.toLowerCase().includes('mukernas');
+
+        return {
+          id: item.id,
+          title: item.judul,
+          date: dateStr,
+          time: timeStr,
+          location: item.lokasi || 'Lokasi tidak ditentukan',
+          type: isBesar ? 'besar' : 'rutin',
+          description: item.deskripsi
+        };
+      });
+
+      setAgendaData(formatted);
+    } catch (e: any) {
+      console.error('Error fetching events:', e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchEvents();
+  }, []);
 
   // Menghitung H-3
   const calculateDaysLeft = (eventDateStr: string) => {
@@ -31,7 +75,7 @@ export default function KegiatanScreen() {
   };
 
   // Filter kegiatan berdasarkan bulan yang dipilih
-  const filteredAgenda = AGENDA_DATA.filter(item => {
+  const filteredAgenda = agendaData.filter(item => {
     const date = new Date(item.date);
     return date.getMonth() + 1 === selectedMonth && date.getFullYear() === selectedYear;
   });
@@ -91,7 +135,7 @@ export default function KegiatanScreen() {
             let eventType = '';
             if (day) {
               const dateStr = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-              const event = AGENDA_DATA.find(e => e.date === dateStr);
+              const event = agendaData.find(e => e.date === dateStr);
               if (event) {
                 hasEvent = true;
                 eventType = event.type;
@@ -134,7 +178,12 @@ export default function KegiatanScreen() {
 
         <Text className="text-white font-bold text-sm mb-4">Agenda {getMonthName(selectedMonth)} {selectedYear}</Text>
 
-        {filteredAgenda.length === 0 ? (
+        {loading ? (
+          <View className="items-center py-10">
+            <ActivityIndicator size="large" color="#10b981" />
+            <Text className="text-slate-500 mt-4 text-center">Memuat agenda...</Text>
+          </View>
+        ) : filteredAgenda.length === 0 ? (
           <View className="items-center py-10">
             <Ionicons name="calendar-outline" size={50} color="#334155" />
             <Text className="text-slate-500 mt-4 text-center">Tidak ada agenda di bulan ini.</Text>

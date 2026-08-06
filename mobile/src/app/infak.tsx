@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, TextInput, ScrollView, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from '@/lib/supabase';
 
 const INFAK_CATEGORIES = [
   { id: "umum", label: "Infak Umum", desc: "Untuk kebutuhan operasional dan program umum" },
@@ -13,6 +15,7 @@ const INFAK_CATEGORIES = [
 
 export default function InfakScreen() {
   const router = useRouter();
+  const [alumniId, setAlumniId] = useState<string | null>(null);
   const [step, setStep] = useState(1);
   const [selectedCat, setSelectedCat] = useState(INFAK_CATEGORIES[0]);
   const [amount, setAmount] = useState('10000');
@@ -20,12 +23,59 @@ export default function InfakScreen() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
-  const handlePay = () => {
+  useEffect(() => {
+    const loadSession = async () => {
+      try {
+        const storedToken = await AsyncStorage.getItem('userToken');
+        setAlumniId(storedToken);
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    loadSession();
+  }, []);
+
+  const handlePay = async () => {
     setIsProcessing(true);
-    setTimeout(() => {
+
+    if (!alumniId || alumniId === '00000000-0000-0000-0000-000000000000') {
+      // Simulasi proses API untuk Mode Uji Coba
+      setTimeout(() => {
+        setIsProcessing(false);
+        setIsSuccess(true);
+      }, 1500);
+      return;
+    }
+
+    try {
+      const ref = 'INF-' + Math.random().toString(36).substr(2, 9).toUpperCase();
+      let dbKategori = 'infak_umum';
+      if (selectedCat.id === 'beasiswa') dbKategori = 'beasiswa';
+      else if (selectedCat.id === 'pembangunan') dbKategori = 'pembangunan';
+      else if (selectedCat.id === 'bansos') dbKategori = 'bansos';
+
+      const { error } = await supabase
+        .from('transaksi_infak')
+        .insert([
+          {
+            alumni_id: alumniId,
+            kategori: dbKategori,
+            nominal: parseFloat(amount) || 0,
+            metode_bayar: payMethod,
+            status: 'success',
+            payment_ref: ref,
+            paid_at: new Date().toISOString()
+          }
+        ]);
+
+      if (error) throw error;
+
       setIsProcessing(false);
       setIsSuccess(true);
-    }, 1500);
+    } catch (e: any) {
+      alert('Transaksi infak gagal: ' + e.message);
+      setIsProcessing(false);
+    }
   };
 
   return (

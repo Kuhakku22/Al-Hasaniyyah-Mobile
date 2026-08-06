@@ -1,39 +1,77 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Image, ImageBackground, KeyboardAvoidingView, Platform, Pressable, StyleSheet, TextInput, View, TouchableOpacity } from 'react-native';
+import { Alert, Image, ImageBackground, KeyboardAvoidingView, Platform, StyleSheet, TextInput, View, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { ThemedText } from '@/components/themed-text';
 import { supabase } from '@/lib/supabase';
 
 export default function LoginScreen() {
+  const [nama, setNama] = useState('');
   const [idUnik, setIdUnik] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
-    if (!idUnik) {
-      Alert.alert('Error', 'Ahmad Ali 220102');
+    const cleanNama = nama.trim();
+    const cleanId = idUnik.trim();
+
+    if (!cleanNama || !cleanId) {
+      Alert.alert('Error', 'Silakan isi Nama Alumni dan Nomor Induk Anggota (NIA).');
       return;
     }
 
     setLoading(true);
     try {
       // JALAN PINTAS UNTUK TESTING
-      if (idUnik === '123456') {
-        Alert.alert('Login Berhasil', 'Selamat datang di Mode Uji Coba!');
+      if (cleanId === '123456') {
+        const mockUser = {
+          id: '00000000-0000-0000-0000-000000000000',
+          nomor_id_unik: '123456',
+          nama_lengkap: cleanNama || 'Mode Uji Coba',
+          nomor_hp: '081234567890',
+          angkatan: 2026,
+          alamat_domisili: 'Pondok Pesantren Dalwa',
+          status_verifikasi: 'verified'
+        };
+        await AsyncStorage.setItem('userToken', mockUser.id);
+        await AsyncStorage.setItem('userProfile', JSON.stringify(mockUser));
+        Alert.alert('Login Berhasil', `Selamat datang di Mode Uji Coba, ${mockUser.nama_lengkap}!`);
         router.replace('/(tabs)/home');
         return;
       }
 
+      // Query database alumni berdasarkan Nomor Induk Anggota (NIA)
       const { data, error } = await supabase
         .from('alumni')
         .select('*')
-        .eq('nomor_id_unik', idUnik)
+        .eq('nomor_id_unik', cleanId)
         .single();
 
       if (error || !data) {
-        Alert.alert('Login Gagal', 'Nomor ID Unik tidak ditemukan.');
+        Alert.alert('Login Gagal', 'Nomor Induk Anggota (NIA) tidak ditemukan.');
+        return;
+      }
+
+      // Verifikasi kecocokan Nama Alumni (Case-Insensitive)
+      const nameInDb = (data.nama_lengkap || '').toLowerCase().trim();
+      const inputName = cleanNama.toLowerCase();
+
+      // Periksa apakah nama yang diinputkan ada kecocokan dengan data di DB
+      const isNameMatched = nameInDb === inputName || nameInDb.includes(inputName) || inputName.includes(nameInDb);
+
+      if (!isNameMatched) {
+        Alert.alert('Login Gagal', 'Nama Alumni dan Nomor Induk Anggota (NIA) tidak cocok.');
+        return;
+      }
+
+      if (data.status_verifikasi === 'pending') {
+        Alert.alert('Login Pending', 'Akun Anda sedang dalam proses verifikasi oleh pengurus.');
+      } else if (data.status_verifikasi === 'rejected') {
+        Alert.alert('Login Ditolak', 'Pendaftaran akun Anda ditolak oleh pengurus.');
       } else {
+        await AsyncStorage.setItem('userToken', data.id);
+        await AsyncStorage.setItem('userProfile', JSON.stringify(data));
         Alert.alert('Login Berhasil', `Selamat datang, ${data.nama_lengkap}!`);
         router.replace('/(tabs)/home');
       }
@@ -75,12 +113,26 @@ export default function LoginScreen() {
               <View style={styles.card}>
                 <ThemedText style={styles.welcomeText}>Ahlan Wasahlan</ThemedText>
                 <ThemedText style={styles.instructionText}>
-                  Silakan masuk menggunakan Nomor Induk Anggota Antum.
+                  Silakan masuk menggunakan Nama Alumni & Nomor Induk Antum.
                 </ThemedText>
 
                 <View style={styles.formContainer}>
+                  {/* Field 1: Nama Alumni */}
                   <View style={styles.inputWrapper}>
-                    <ThemedText style={styles.label}>Nomor Induk Anggota</ThemedText>
+                    <ThemedText style={styles.label}>Nama Alumni</ThemedText>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Masukkan nama lengkap alumni"
+                      placeholderTextColor="#94A3B8"
+                      value={nama}
+                      onChangeText={setNama}
+                      autoCapitalize="words"
+                    />
+                  </View>
+
+                  {/* Field 2: Nomor Induk Anggota (NIA) */}
+                  <View style={styles.inputWrapper}>
+                    <ThemedText style={styles.label}>Nomor Induk Anggota (NIA)</ThemedText>
                     <TextInput
                       style={styles.input}
                       placeholder="Contoh: 09445"

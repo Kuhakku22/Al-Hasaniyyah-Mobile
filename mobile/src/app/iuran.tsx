@@ -1,33 +1,113 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+import { supabase } from '@/lib/supabase';
 
 export default function IuranScreen() {
   const router = useRouter();
   
-  // Simulasi data tagihan
-  const [bills, setBills] = useState([
-    { id: 1, title: 'Iuran Wajib - Agustus 2026', dueDate: '10 Agustus 2026', amount: 25000, status: 'Belum Lunas' },
-    { id: 2, title: 'Iuran Wajib - Juli 2026', dueDate: '10 Juli 2026', amount: 25000, status: 'Lunas' },
-    { id: 3, title: 'Iuran Wajib - Juni 2026', dueDate: '10 Juni 2026', amount: 25000, status: 'Lunas' }
+  const [bills, setBills] = useState<any[]>([
+    { id: 'mock-1', title: 'Iuran Wajib - Agustus 2026', dueDate: '10 Agustus 2026', amount: 25000, status: 'Belum Lunas' },
+    { id: 'mock-2', title: 'Iuran Wajib - Juli 2026', dueDate: '10 Juli 2026', amount: 25000, status: 'Lunas' },
+    { id: 'mock-3', title: 'Iuran Wajib - Juni 2026', dueDate: '10 Juni 2026', amount: 25000, status: 'Lunas' }
   ]);
 
+  const [userProfile, setUserProfile] = useState<any>(null);
+  const [alumniId, setAlumniId] = useState<string | null>(null);
   const [selectedBill, setSelectedBill] = useState<any>(null);
   const [payMethod, setPayMethod] = useState('qris');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
-  const handlePay = () => {
+  const loadSession = async () => {
+    try {
+      const storedToken = await AsyncStorage.getItem('userToken');
+      const storedProfile = await AsyncStorage.getItem('userProfile');
+      setAlumniId(storedToken);
+      if (storedProfile) {
+        setUserProfile(JSON.parse(storedProfile));
+      }
+      await fetchBills(storedToken);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const fetchBills = async (currentAlumniId: string | null) => {
+    try {
+      if (!currentAlumniId || currentAlumniId === '00000000-0000-0000-0000-000000000000') {
+        return;
+      }
+      
+      const { data, error } = await supabase
+        .from('iuran_wajib')
+        .select('*')
+        .eq('alumni_id', currentAlumniId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        const formatted = data.map((b: any) => {
+          const statusLabel = b.status === 'lunas' ? 'Lunas' : 'Belum Lunas';
+          const dueDateFormatted = b.jatuh_tempo ? new Date(b.jatuh_tempo).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-';
+          return {
+            id: b.id,
+            title: `Iuran Wajib - ${b.periode}`,
+            dueDate: dueDateFormatted,
+            amount: parseFloat(b.nominal),
+            status: statusLabel,
+            rawStatus: b.status
+          };
+        });
+        setBills(formatted);
+      }
+    } catch (e: any) {
+      console.error('Error fetching bills:', e.message);
+    }
+  };
+
+  useEffect(() => {
+    loadSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handlePay = async () => {
     setIsProcessing(true);
-    setTimeout(() => {
+    
+    if (!alumniId || alumniId === '00000000-0000-0000-0000-000000000000' || String(selectedBill.id).startsWith('mock') || typeof selectedBill.id === 'number') {
+      setTimeout(() => {
+        setIsProcessing(false);
+        setIsSuccess(true);
+        setBills(bills.map(b => b.id === selectedBill.id ? { ...b, status: 'Lunas' } : b));
+      }, 2000);
+      return;
+    }
+
+    try {
+      const ref = 'PAY-' + Math.random().toString(36).substr(2, 9).toUpperCase();
+      const { error } = await supabase
+        .from('iuran_wajib')
+        .update({
+          status: 'lunas',
+          paid_at: new Date().toISOString(),
+          metode_bayar: payMethod,
+          payment_ref: ref
+        })
+        .eq('id', selectedBill.id);
+
+      if (error) throw error;
+
       setIsProcessing(false);
       setIsSuccess(true);
-      
-      // Update status tagihan menjadi Lunas
-      setBills(bills.map(b => b.id === selectedBill.id ? { ...b, status: 'Lunas' } : b));
-    }, 2000);
+      await fetchBills(alumniId);
+    } catch (e: any) {
+      alert('Pembayaran gagal: ' + e.message);
+      setIsProcessing(false);
+    }
   };
 
   const resetFlow = () => {
@@ -63,12 +143,16 @@ export default function IuranScreen() {
           <View>
             <View className="bg-indigo-900 p-5 rounded-2xl border border-indigo-800 mb-4">
               <Text className="text-[10px] text-indigo-300 uppercase tracking-wider font-bold mb-1">Status Keanggotaan Anda</Text>
-              <Text className="text-white font-black text-lg">Ahmad Baidlowi (NIA: 1023001)</Text>
+              <Text className="text-white font-black text-lg">
+                {userProfile ? userProfile.nama_lengkap : 'Ahmad Baidlowi'} (NIA: {userProfile ? userProfile.nomor_id_unik : '1023001'})
+              </Text>
               
               <View className="mt-4 flex-row justify-between items-center">
-                <View className={`${bills[0].status === 'Lunas' ? 'bg-emerald-500' : 'bg-rose-500'} px-3 py-1.5 rounded-full`}>
-                  <Text className="text-white font-bold text-xs">{bills[0].status === 'Lunas' ? 'Lunas Bulanan' : 'Ada Tunggakan'}</Text>
-                </View>
+                {bills.length > 0 && (
+                  <View className={`${bills[0].status === 'Lunas' ? 'bg-emerald-500' : 'bg-rose-500'} px-3 py-1.5 rounded-full`}>
+                    <Text className="text-white font-bold text-xs">{bills[0].status === 'Lunas' ? 'Lunas Bulanan' : 'Ada Tunggakan'}</Text>
+                  </View>
+                )}
                 <Text className="text-indigo-200 text-xs">Hingga: Des 2026</Text>
               </View>
             </View>

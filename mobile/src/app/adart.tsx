@@ -56,7 +56,7 @@ const ADART_DATA: Bab[] = [
     judul: 'PERMUSYAWARATAN DAN STRUKTUR',
     pasalList: [
       { id: 'p10', nomor: 10, judul: 'Musyawarah Besar', isi: 'Musyawarah Besar (Mubes) merupakan pemegang kekuasaan tertinggi organisasi yang diselenggarakan sekali dalam 5 (lima) tahun untuk memilih Ketua Umum dan menyempurnakan AD/ART.' },
-      { id: 'p11', nomor: 11, judul: 'Kepengurusan Korda', description: 'Pengurus Cabang / Korda', isi: 'Koordinator Daerah (Korda) dibentuk di tingkat kota/kabupaten atau wilayah provinsi/luar negeri atas rekomendasi Pengurus Pusat.' }
+      { id: 'p11', nomor: 11, judul: 'Kepengurusan Korda', isi: 'Koordinator Daerah (Korda) dibentuk di tingkat kota/kabupaten atau wilayah provinsi/luar negeri atas rekomendasi Pengurus Pusat.' }
     ]
   }
 ];
@@ -190,7 +190,7 @@ export default function AdArtScreen() {
             </View>
             <Text className="text-slate-300 font-bold text-base mb-1">Tidak Ada Hasil Cocok</Text>
             <Text className="text-slate-500 text-xs text-center leading-5">
-              Coba gunakan kata pencarian lain seperti "iuran", "cabang", "alumni", atau nomor pasal.
+              Coba gunakan kata pencarian lain seperti &quot;iuran&quot;, &quot;cabang&quot;, &quot;alumni&quot;, atau nomor pasal.
             </Text>
           </View>
         )}

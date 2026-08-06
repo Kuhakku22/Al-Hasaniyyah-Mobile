@@ -1,21 +1,53 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { RefreshControl, ScrollView, StatusBar, Text, TouchableOpacity, View, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function Home() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [notifications, setNotifications] = useState(1);
   const [showBalance, setShowBalance] = useState(true);
+  const [userProfile, setUserProfile] = useState<any>(null);
+
+  const loadProfile = async () => {
+    try {
+      const storedProfile = await AsyncStorage.getItem('userProfile');
+      if (storedProfile) {
+        setUserProfile(JSON.parse(storedProfile));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    loadProfile();
+  }, []);
 
   const onRefresh = React.useCallback(() => {
     setRefreshing(true);
-    setTimeout(() => {
+    loadProfile().finally(() => {
       setRefreshing(false);
-    }, 2000);
+    });
   }, []);
+
+  const getInitials = (name: string) => {
+    if (!name) return 'AL';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return name.substring(0, 2).toUpperCase();
+  };
+
+  const handleLogout = async () => {
+    await AsyncStorage.removeItem('userToken');
+    await AsyncStorage.removeItem('userProfile');
+    router.replace('/');
+  };
 
   const features = [
     { title: 'Transfer', icon: 'send', route: '/infak', color: '#00A39D', bg: 'bg-teal-50' },
@@ -62,7 +94,7 @@ export default function Home() {
                   <View className="absolute 1 right-0 w-3 h-3 bg-red-500 rounded-full border border-emerald-900" />
                 )}
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => router.replace('/')}>
+              <TouchableOpacity onPress={handleLogout}>
                 <Ionicons name="log-out-outline" size={26} color="#fff" />
               </TouchableOpacity>
             </View>
@@ -71,9 +103,18 @@ export default function Home() {
           {/* User Info */}
           <View className="px-5 mb-6 flex-row items-center gap-3">
             <View className="w-12 h-12 rounded-full bg-emerald-700 items-center justify-center border-2 border-emerald-500/50">
-              <Text className="text-white font-bold text-lg">AL</Text>
+              <Text className="text-white font-bold text-lg">
+                {getInitials(userProfile?.nama_lengkap || 'Ahmad Ali')}
+              </Text>
             </View>
-            <Text className="text-white font-bold text-lg">Ahmad Ali</Text>
+            <View>
+              <Text className="text-white font-bold text-lg">
+                {userProfile?.nama_lengkap || 'Ahmad Ali'}
+              </Text>
+              <Text className="text-emerald-200 text-xs">
+                NIA: {userProfile?.nomor_id_unik || '123456'}
+              </Text>
+            </View>
           </View>
 
           {/* Floating Main Card (Saldo / Total Infak) */}

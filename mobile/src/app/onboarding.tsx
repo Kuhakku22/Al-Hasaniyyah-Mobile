@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Image, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -9,7 +9,7 @@ export default function Onboarding() {
 
   const handleContinue = async () => {
     await AsyncStorage.setItem('hasLaunched', 'true');
-    router.replace('/login');
+    router.replace('/');
   };
 
   return (

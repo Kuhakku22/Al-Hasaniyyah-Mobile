@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { ThemedText } from '@/components/themed-text';
+import { supabase } from '@/lib/supabase';
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -17,7 +18,7 @@ export default function RegisterScreen() {
     phone: '',
   });
 
-  const handleRegister = () => {
+  const handleRegister = async () => {
     // Basic validation
     if (!formData.nama || !formData.angkatan || !formData.domisili || !formData.phone) {
       alert('Mohon lengkapi semua data pendaftaran.');
@@ -25,11 +26,31 @@ export default function RegisterScreen() {
     }
 
     setLoading(true);
-    // Simulasi proses API
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      const tempId = `REG-${formData.phone.replace(/[^0-9]/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const { error } = await supabase
+        .from('alumni')
+        .insert([
+          {
+            nama_lengkap: formData.nama,
+            angkatan: parseInt(formData.angkatan) || null,
+            alamat_domisili: formData.domisili,
+            nomor_hp: formData.phone,
+            nomor_id_unik: tempId,
+            status_verifikasi: 'pending'
+          }
+        ]);
+
+      if (error) {
+        throw error;
+      }
+
       setIsSuccess(true);
-    }, 2000);
+    } catch (e: any) {
+      alert('Pendaftaran gagal: ' + e.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

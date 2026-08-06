@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Image, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -9,6 +9,21 @@ import { colors } from '../../constants/colors';
 
 export default function Profile() {
   const router = useRouter();
+  const [userProfile, setUserProfile] = useState<any>(null);
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        const storedProfile = await AsyncStorage.getItem('userProfile');
+        if (storedProfile) {
+          setUserProfile(JSON.parse(storedProfile));
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    loadProfile();
+  }, []);
 
   const handleLogout = () => {
     Alert.alert('Logout', 'Apakah Anda yakin ingin keluar?', [
@@ -18,7 +33,8 @@ export default function Profile() {
         style: 'destructive',
         onPress: async () => {
           await AsyncStorage.removeItem('userToken');
-          router.replace('/login');
+          await AsyncStorage.removeItem('userProfile');
+          router.replace('/');
         }
       }
     ]);
@@ -41,11 +57,17 @@ export default function Profile() {
           <View className="w-24 h-24 rounded-full bg-gray-200 border-4 border-primary/20 items-center justify-center mb-4">
             <Ionicons name="person" size={40} color={colors.textLight} />
           </View>
-          <Text className="text-xl font-bold text-text mb-1">Ahmad Fadillah</Text>
-          <Text className="text-sm text-textLight mb-2">ahmad.fadillah@email.com</Text>
+          <Text className="text-xl font-bold text-text mb-1">
+            {userProfile?.nama_lengkap || 'Ahmad Fadillah'}
+          </Text>
+          <Text className="text-sm text-textLight mb-2">
+            {userProfile?.email || (userProfile?.nomor_id_unik ? `nia-${userProfile.nomor_id_unik}@alhasaniyyah.org` : 'ahmad.fadillah@email.com')}
+          </Text>
           <View className="flex-row items-center bg-primary/10 px-3 py-1 rounded-full">
             <Ionicons name="location" size={14} color={colors.primary} />
-            <Text className="text-primary font-bold text-xs ml-1">Korda Jakarta • Angkatan 2015</Text>
+            <Text className="text-primary font-bold text-xs ml-1">
+              {userProfile?.alamat_domisili || 'Korda Jakarta'} • Angkatan {userProfile?.angkatan || 2015}
+            </Text>
           </View>
         </View>
 

@@ -1,65 +1,713 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
-  return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+import React, { useState, useEffect } from "react";
+import { supabase } from "../lib/supabase";
+
+// Mock Data Fallbacks
+const MOCK_ALUMNI = [
+  { id: "1", nomor_id_unik: "1023001", nama_lengkap: "Ahmad Baidlowi", angkatan: 2018, alamat_domisili: "Pasuruan", status_verifikasi: "verified", nomor_hp: "081299991111" },
+  { id: "2", nomor_id_unik: "1023002", nama_lengkap: "M. Zarkasyi", angkatan: 2015, alamat_domisili: "Pontianak", status_verifikasi: "verified", nomor_hp: "081299992222" },
+  { id: "3", nomor_id_unik: "REG-08123333-5555", nama_lengkap: "Zainal Arifin", angkatan: 2022, alamat_domisili: "Malang", status_verifikasi: "pending", nomor_hp: "081233334444" },
+  { id: "4", nomor_id_unik: "999999", nama_lengkap: "Syihabuddin", angkatan: 2024, alamat_domisili: "Jakarta", status_verifikasi: "rejected", nomor_hp: "081255556666" },
+];
+
+const MOCK_IURAN = [
+  { id: "1", nama_lengkap: "Ahmad Ali", periode: "Agustus 2026", nominal: 25000, status: "belum_bayar", paid_at: null },
+  { id: "2", nama_lengkap: "Ahmad Ali", periode: "Juli 2026", nominal: 25000, status: "lunas", paid_at: "2026-07-08T14:30:00Z" },
+  { id: "3", nama_lengkap: "Ahmad Baidlowi", periode: "Agustus 2026", nominal: 25000, status: "lunas", paid_at: "2026-08-01T10:00:00Z" },
+];
+
+const MOCK_INFAK = [
+  { id: "1", nama_lengkap: "Ahmad Ali", kategori: "beasiswa", nominal: 100000, anonim: false, pesan: "Semoga berkah", paid_at: "2026-07-05T10:00:00Z" },
+  { id: "2", nama_lengkap: "Hamba Allah", kategori: "infak_umum", nominal: 50000, anonim: true, pesan: "Infak umum", paid_at: "2026-07-02T08:30:00Z" },
+];
+
+const MOCK_KONSULTASI = [
+  { id: "1", nama_lengkap: "Ahmad Ali", isi_masukan: "Mohon agar aplikasi ini kedepannya bisa menambahkan fitur notifikasi adzan sesuai wilayah.", status: "Menunggu Tanggapan", tanggapan: null, created_at: "2026-07-10T12:00:00Z" },
+  { id: "2", nama_lengkap: "Ahmad Ali", isi_masukan: "Bagaimana prosedur pergantian ketua Korda di wilayah Sumatera?", status: "Ditanggapi", tanggapan: "Prosedur pergantian Korda telah diatur dalam AD/ART Bab IV. Silakan cek menu AD/ART di beranda.", created_at: "2026-06-05T09:00:00Z" },
+];
+
+interface Alumni {
+  id: string;
+  nomor_id_unik: string;
+  nama_lengkap: string;
+  angkatan: number | null;
+  alamat_domisili: string | null;
+  status_verifikasi: string;
+  nomor_hp: string | null;
+}
+
+interface Iuran {
+  id: string;
+  nama_lengkap: string;
+  periode: string;
+  nominal: number;
+  status: string;
+  paid_at: string | null;
+  payment_ref?: string | null;
+}
+
+interface Infak {
+  id: string;
+  nama_lengkap: string;
+  kategori: string;
+  nominal: number;
+  anonim: boolean;
+  pesan: string | null;
+  paid_at: string | null;
+}
+
+interface Konsultasi {
+  id: string;
+  nama_lengkap: string;
+  isi_masukan: string;
+  status: string;
+  tanggapan: string | null;
+  created_at: string;
+}
+
+export default function AdminPortal() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [password, setPassword] = useState("");
+  const [errorLogin, setErrorLogin] = useState("");
+
+  const [activeTab, setActiveTab] = useState("verifikasi");
+  const [alumni, setAlumni] = useState<Alumni[]>([]);
+  const [iuran, setIuran] = useState<Iuran[]>([]);
+  const [infak, setInfak] = useState<Infak[]>([]);
+  const [konsultasi, setKonsultasi] = useState<Konsultasi[]>([]);
+  const [replyText, setReplyText] = useState<Record<string, string>>({});
+  const [editingNia, setEditingNia] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(false);
+
+  // Check login state
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const auth = sessionStorage.getItem("adminAuth");
+      if (auth === "true") {
+        const timer = setTimeout(() => {
+          setIsLoggedIn(true);
+        }, 0);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, []);
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password === "admin123" || password === "dalwa123") {
+      setIsLoggedIn(true);
+      sessionStorage.setItem("adminAuth", "true");
+      setErrorLogin("");
+    } else {
+      setErrorLogin("Password salah. Silakan coba lagi.");
+    }
+  };
+
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    sessionStorage.removeItem("adminAuth");
+  };
+
+  // Fetch data from Supabase
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      // 1. Fetch Alumni
+      const { data: alumniData, error: alumniErr } = await supabase
+        .from("alumni")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (alumniErr) throw alumniErr;
+      setAlumni(alumniData || []);
+
+      // 2. Fetch Iuran
+      const { data: iuranData, error: iuranErr } = await supabase
+        .from("iuran_wajib")
+        .select("*, alumni(nama_lengkap)")
+        .order("created_at", { ascending: false });
+
+      if (iuranErr) throw iuranErr;
+      setIuran(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (iuranData || []).map((i: any) => ({
+          ...i,
+          nama_lengkap: i.alumni?.nama_lengkap || "Alumni Tidak Dikenal",
+        }))
+      );
+
+      // 3. Fetch Infak
+      const { data: infakData, error: infakErr } = await supabase
+        .from("transaksi_infak")
+        .select("*, alumni(nama_lengkap)")
+        .order("created_at", { ascending: false });
+
+      if (infakErr) throw infakErr;
+      setInfak(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (infakData || []).map((i: any) => ({
+          ...i,
+          nama_lengkap: i.anonim ? "Hamba Allah" : i.alumni?.nama_lengkap || "Alumni Tidak Dikenal",
+        }))
+      );
+
+      // 4. Fetch Konsultasi
+      const { data: consultData, error: consultErr } = await supabase
+        .from("konsultasi_saran")
+        .select("*, alumni(nama_lengkap)")
+        .order("created_at", { ascending: false });
+
+      if (consultErr) throw consultErr;
+      setKonsultasi(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (consultData || []).map((c: any) => ({
+          ...c,
+          nama_lengkap: c.alumni?.nama_lengkap || "Alumni Tidak Dikenal",
+        }))
+      );
+    } catch (e) {
+      console.warn("Menggunakan data tiruan (mock data) karena kegagalan koneksi database:", e);
+      setAlumni(MOCK_ALUMNI);
+      setIuran(MOCK_IURAN);
+      setInfak(MOCK_INFAK);
+      setKonsultasi(MOCK_KONSULTASI);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isLoggedIn) {
+      const timer = setTimeout(() => {
+        fetchData();
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoggedIn]);
+
+  // Action: Approve Alumni
+  const handleApproveAlumni = async (id: string, phone: string) => {
+    const rawNia = editingNia[id] || "";
+    if (!rawNia.trim()) {
+      alert("Silakan masukkan Nomor Induk Anggota (NIA) terlebih dahulu.");
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("alumni")
+        .update({
+          nomor_id_unik: rawNia,
+          status_verifikasi: "verified",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+
+      if (error) throw error;
+      alert("Alumni berhasil disetujui!");
+      fetchData();
+    } catch (e) {
+      // Mock update
+      setAlumni(
+        alumni.map((a) =>
+          a.id === id ? { ...a, nomor_id_unik: rawNia, status_verifikasi: "verified" } : a
+        )
+      );
+      alert("Mode Demo: Alumni berhasil disetujui secara lokal.");
+    }
+  };
+
+  // Action: Reject Alumni
+  const handleRejectAlumni = async (id: string) => {
+    if (!confirm("Apakah Anda yakin ingin menolak pendaftaran alumni ini?")) return;
+    try {
+      const { error } = await supabase
+        .from("alumni")
+        .update({
+          status_verifikasi: "rejected",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+
+      if (error) throw error;
+      alert("Pendaftaran ditolak.");
+      fetchData();
+    } catch (e) {
+      // Mock update
+      setAlumni(
+        alumni.map((a) => (a.id === id ? { ...a, status_verifikasi: "rejected" } : a))
+      );
+      alert("Mode Demo: Pendaftaran ditolak secara lokal.");
+    }
+  };
+
+  // Action: Submit reply for Konsultasi
+  const handleReplyConsultation = async (id: string) => {
+    const text = replyText[id] || "";
+    if (!text.trim()) {
+      alert("Tanggapan tidak boleh kosong.");
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("konsultasi_saran")
+        .update({
+          tanggapan: text,
+          status: "Ditanggapi",
+        })
+        .eq("id", id);
+
+      if (error) throw error;
+      alert("Tanggapan berhasil dikirim!");
+      setReplyText((prev) => ({ ...prev, [id]: "" }));
+      fetchData();
+    } catch (e) {
+      // Mock update
+      setKonsultasi(
+        konsultasi.map((c) =>
+          c.id === id ? { ...c, status: "Ditanggapi", tanggapan: text } : c
+        )
+      );
+      setReplyText((prev) => ({ ...prev, [id]: "" }));
+      alert("Mode Demo: Tanggapan terkirim secara lokal.");
+    }
+  };
+
+  // UI: Login Screen
+  if (!isLoggedIn) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-950 via-emerald-900 to-slate-950 p-6 text-white font-sans">
+        <div className="w-full max-w-md bg-white/10 backdrop-blur-xl border border-white/20 p-8 rounded-3xl shadow-2xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl" />
+          <div className="absolute bottom-0 left-0 w-32 h-32 bg-amber-500/10 rounded-full blur-3xl" />
+
+          <div className="flex flex-col items-center mb-8">
+            <div className="w-20 h-20 bg-emerald-800 rounded-full border-2 border-amber-500 flex items-center justify-center mb-4 shadow-lg">
+              <svg className="w-10 h-10 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-black tracking-wider text-center text-white">PORTAL ADMIN</h2>
+            <p className="text-emerald-300 text-xs text-center mt-1 font-medium">Ikatan Alumni Al Hasaniyyah Dalwa</p>
+          </div>
+
+          <form onSubmit={handleLogin} className="space-y-6">
+            <div>
+              <label className="block text-xs uppercase font-bold tracking-wider text-emerald-300 mb-2">Kata Sandi Akses</label>
+              <input
+                type="password"
+                placeholder="Masukkan password admin..."
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full bg-slate-900/60 border border-white/10 p-4 rounded-xl text-white focus:outline-none focus:border-amber-500 transition-colors"
+                required
+              />
+            </div>
+
+            {errorLogin && <p className="text-red-400 text-xs font-semibold text-center">{errorLogin}</p>}
+
+            <button
+              type="submit"
+              className="w-full bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 p-4 rounded-xl font-bold tracking-wider hover:opacity-90 active:scale-98 transition-all shadow-lg shadow-amber-500/20"
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+              MASUK KE DASHBOARD
+            </button>
+          </form>
+
+          <p className="text-center text-[10px] text-slate-400 mt-8">
+            Gunakan password <span className="font-mono text-amber-400">admin123</span> untuk masuk.
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+      </div>
+    );
+  }
+
+  // UI: Stats calculations
+  const pendingCount = alumni.filter((a) => a.status_verifikasi === "pending").length;
+  const verifiedCount = alumni.filter((a) => a.status_verifikasi === "verified").length;
+  const totalIuran = iuran.filter((i) => i.status === "lunas").reduce((sum, item) => sum + item.nominal, 0);
+  const totalInfak = infak.reduce((sum, item) => sum + item.nominal, 0);
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col">
+      {/* Top Navigation */}
+      <header className="bg-emerald-950/80 backdrop-blur border-b border-emerald-900 px-6 py-4 flex justify-between items-center sticky top-0 z-50">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-emerald-800 rounded-full border border-amber-500 flex items-center justify-center">
+            <span className="text-amber-400 font-bold text-lg">AH</span>
+          </div>
+          <div>
+            <h1 className="font-black text-white text-base tracking-wider">AL HASANIYYAH</h1>
+            <p className="text-emerald-400 text-[10px] font-semibold tracking-widest uppercase">Admin Panel Pusat</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <div className="hidden md:flex flex-col items-end">
+            <span className="text-xs text-white font-bold">Super Admin</span>
+            <span className="text-[10px] text-emerald-400">Pusat Dalwa Raci</span>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500 hover:text-white px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            Logout
+          </button>
+        </div>
+      </header>
+
+      {/* Main Dashboard Area */}
+      <main className="flex-1 p-6 max-w-7xl w-full mx-auto space-y-6">
+        {/* Banner Welcome */}
+        <div className="bg-gradient-to-r from-emerald-900 to-slate-900 p-6 rounded-3xl border border-emerald-800 shadow-xl relative overflow-hidden flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
+          <div>
+            <h2 className="text-2xl font-black text-white">Ahlan wa Sahlan, Admin!</h2>
+            <p className="text-emerald-300 text-xs mt-1">Kelola data pendaftaran alumni baru, pantau iuran bulanan, serta tanggapi saran/masukan.</p>
+          </div>
+          <button
+            onClick={fetchData}
+            disabled={loading}
+            className="bg-amber-500 text-slate-950 px-5 py-2.5 rounded-xl text-xs font-black tracking-wider shadow-lg hover:opacity-90 transition-all flex items-center gap-1.5"
           >
-            Documentation
-          </a>
+            {loading ? "MEMUAT..." : "MUAT ULANG DATA"}
+          </button>
+        </div>
+
+        {/* Stats Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Stat 1 */}
+          <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-lg relative overflow-hidden">
+            <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Pendaftaran Pending</p>
+            <h3 className="text-3xl font-black text-amber-500 mt-2">{pendingCount} Alumni</h3>
+            <p className="text-[10px] text-slate-500 mt-1">Perlu tindakan verifikasi segera</p>
+          </div>
+
+          {/* Stat 2 */}
+          <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-lg relative overflow-hidden">
+            <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Alumni Terverifikasi</p>
+            <h3 className="text-3xl font-black text-emerald-400 mt-2">{verifiedCount} Alumni</h3>
+            <p className="text-[10px] text-slate-500 mt-1">Terdaftar aktif di direktori</p>
+          </div>
+
+          {/* Stat 3 */}
+          <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-lg relative overflow-hidden">
+            <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Total Iuran Terkumpul</p>
+            <h3 className="text-3xl font-black text-white mt-2">Rp {totalIuran.toLocaleString("id-ID")}</h3>
+            <p className="text-[10px] text-emerald-400 mt-1">Status Keuangan: Sehat</p>
+          </div>
+
+          {/* Stat 4 */}
+          <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-lg relative overflow-hidden">
+            <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Total Infak Sosial</p>
+            <h3 className="text-3xl font-black text-blue-400 mt-2">Rp {totalInfak.toLocaleString("id-ID")}</h3>
+            <p className="text-[10px] text-slate-500 mt-1">Program Beasiswa & Fasilitas</p>
+          </div>
+        </div>
+
+        {/* Tab Controls */}
+        <div className="flex bg-slate-900 p-1.5 rounded-xl border border-slate-800 max-w-2xl">
+          {[
+            { id: "verifikasi", label: "Verifikasi Pendaftaran", badge: pendingCount },
+            { id: "iuran", label: "Iuran Wajib" },
+            { id: "infak", label: "Infak Alumni" },
+            { id: "konsultasi", label: "Konsultasi & Masukan", badge: konsultasi.filter((c) => c.status === "Menunggu Tanggapan").length },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all relative ${
+                activeTab === tab.id
+                  ? "bg-emerald-800 text-white shadow-md shadow-emerald-950/20"
+                  : "text-slate-400 hover:text-white hover:bg-slate-800/50"
+              }`}
+            >
+              {tab.label}
+              {tab.badge !== undefined && tab.badge > 0 && (
+                <span className="absolute -top-1 -right-1 bg-amber-500 text-slate-950 text-[9px] w-4.5 h-4.5 rounded-full flex items-center justify-center font-bold">
+                  {tab.badge}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Content Area */}
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl shadow-xl overflow-hidden min-h-[450px]">
+          {loading ? (
+            <div className="py-24 flex flex-col items-center justify-center gap-4">
+              <div className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin" />
+              <p className="text-slate-400 text-xs font-semibold tracking-wider">MEMUAT DATA DARI DATABASE...</p>
+            </div>
+          ) : (
+            <div className="p-6">
+              {/* TAB 1: VERIFIKASI ALUMNI */}
+              {activeTab === "verifikasi" && (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center pb-4 border-b border-slate-800">
+                    <h4 className="text-base font-black text-white">Verifikasi Pendaftaran Alumni Baru</h4>
+                    <span className="bg-amber-500/10 border border-amber-500/20 text-amber-500 px-3 py-1 rounded-full text-[10px] font-bold">
+                      {alumni.filter((a) => a.status_verifikasi === "pending").length} menunggu verifikasi
+                    </span>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="text-slate-400 border-b border-slate-800">
+                          <th className="py-3 px-4">Nama Lengkap</th>
+                          <th className="py-3 px-4">Angkatan</th>
+                          <th className="py-3 px-4">Domisili</th>
+                          <th className="py-3 px-4">Nomor WA</th>
+                          <th className="py-3 px-4">ID Registrasi</th>
+                          <th className="py-3 px-4 text-center">Tindakan Persetujuan</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {alumni.filter((a) => a.status_verifikasi === "pending").length > 0 ? (
+                          alumni
+                            .filter((a) => a.status_verifikasi === "pending")
+                            .map((a) => (
+                              <tr key={a.id} className="border-b border-slate-800/50 hover:bg-slate-800/30">
+                                <td className="py-3 px-4 font-bold text-white">{a.nama_lengkap}</td>
+                                <td className="py-3 px-4 text-slate-300">{a.angkatan || "-"}</td>
+                                <td className="py-3 px-4 text-slate-300">{a.alamat_domisili || "-"}</td>
+                                <td className="py-3 px-4 font-mono text-slate-300">{a.nomor_hp || "-"}</td>
+                                <td className="py-3 px-4 text-slate-500 text-[10px] font-mono">{a.nomor_id_unik}</td>
+                                <td className="py-3 px-4">
+                                  <div className="flex items-center justify-center gap-3">
+                                    <input
+                                      type="text"
+                                      placeholder="Ketik NIA baru..."
+                                      value={editingNia[a.id] || ""}
+                                      onChange={(e) =>
+                                        setEditingNia((prev) => ({ ...prev, [a.id]: e.target.value }))
+                                      }
+                                      className="bg-slate-950 border border-slate-800 py-1 px-2.5 rounded-lg text-white text-[11px] focus:outline-none focus:border-emerald-500 w-32"
+                                    />
+                                    <button
+                                      onClick={() => handleApproveAlumni(a.id, a.nomor_hp)}
+                                      className="bg-emerald-600 text-white px-3 py-1 rounded-lg text-[10px] font-bold hover:bg-emerald-500 transition-colors"
+                                    >
+                                      Setujui
+                                    </button>
+                                    <button
+                                      onClick={() => handleRejectAlumni(a.id)}
+                                      className="bg-red-500/10 border border-red-500/20 text-red-400 px-3 py-1 rounded-lg text-[10px] font-bold hover:bg-red-600 hover:text-white transition-colors"
+                                    >
+                                      Tolak
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))
+                        ) : (
+                          <tr>
+                            <td colSpan={6} className="text-center py-12 text-slate-500 font-semibold">
+                              Tidak ada pengajuan pendaftaran baru yang tertunda.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: IURAN WAJIB */}
+              {activeTab === "iuran" && (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center pb-4 border-b border-slate-800">
+                    <h4 className="text-base font-black text-white">Laporan & Pengumpulan Iuran Wajib</h4>
+                    <span className="text-emerald-400 font-bold text-xs">Target: Rp 25.000 / Bulan</span>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="text-slate-400 border-b border-slate-800">
+                          <th className="py-3 px-4">Nama Alumni</th>
+                          <th className="py-3 px-4">Periode</th>
+                          <th className="py-3 px-4">Nominal</th>
+                          <th className="py-3 px-4">Status</th>
+                          <th className="py-3 px-4">Waktu Bayar</th>
+                          <th className="py-3 px-4">Referensi Pembayaran</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {iuran.length > 0 ? (
+                          iuran.map((i) => (
+                            <tr key={i.id} className="border-b border-slate-800/50 hover:bg-slate-800/30">
+                              <td className="py-3 px-4 font-bold text-white">{i.nama_lengkap}</td>
+                              <td className="py-3 px-4 text-slate-300">{i.periode}</td>
+                              <td className="py-3 px-4 font-mono font-bold text-white">Rp {parseFloat(i.nominal || 0).toLocaleString("id-ID")}</td>
+                              <td className="py-3 px-4">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  i.status === "lunas"
+                                    ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400"
+                                    : "bg-rose-500/10 border border-rose-500/20 text-rose-400"
+                                }`}>
+                                  {i.status === "lunas" ? "LUNAS" : "BELUM LUNAS"}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-slate-400">
+                                {i.paid_at ? new Date(i.paid_at).toLocaleString("id-ID") : "-"}
+                              </td>
+                              <td className="py-3 px-4 text-slate-500 font-mono text-[10px]">
+                                {i.payment_ref || "-"}
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={6} className="text-center py-12 text-slate-500 font-semibold">
+                              Tidak ada riwayat tagihan iuran wajib.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 3: INFAK ALUMNI */}
+              {activeTab === "infak" && (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center pb-4 border-b border-slate-800">
+                    <h4 className="text-base font-black text-white">Riwayat Transaksi Infak Mandiri</h4>
+                    <span className="text-blue-400 font-bold text-xs">Total Terkumpul: Rp {totalInfak.toLocaleString("id-ID")}</span>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="text-slate-400 border-b border-slate-800">
+                          <th className="py-3 px-4">Nama Donatur</th>
+                          <th className="py-3 px-4">Kategori Infak</th>
+                          <th className="py-3 px-4">Nominal</th>
+                          <th className="py-3 px-4">Pesan / Doa</th>
+                          <th className="py-3 px-4">Waktu Transaksi</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {infak.length > 0 ? (
+                          infak.map((inf) => (
+                            <tr key={inf.id} className="border-b border-slate-800/50 hover:bg-slate-800/30">
+                              <td className="py-3 px-4 font-bold text-white">
+                                {inf.nama_lengkap}
+                              </td>
+                              <td className="py-3 px-4">
+                                <span className="bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 px-2 py-0.5 rounded text-[10px] font-bold uppercase">
+                                  {inf.kategori ? inf.kategori.replace("_", " ") : "UMUM"}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 font-mono font-bold text-emerald-400">Rp {parseFloat(inf.nominal || 0).toLocaleString("id-ID")}</td>
+                               <td className="py-3 px-4 text-slate-300 italic font-medium">
+                                 &quot;{inf.pesan || "Tanpa pesan"}&quot;
+                               </td>
+                              <td className="py-3 px-4 text-slate-400">
+                                {inf.paid_at ? new Date(inf.paid_at).toLocaleString("id-ID") : "-"}
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={5} className="text-center py-12 text-slate-500 font-semibold">
+                              Tidak ada riwayat transaksi infak.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 4: KONSULTASI & MASUKAN */}
+              {activeTab === "konsultasi" && (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center pb-4 border-b border-slate-800">
+                    <h4 className="text-base font-black text-white">Kelola Masukan, Kritik, & Konsultasi Alumni</h4>
+                    <span className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full text-[10px] font-bold">
+                      {konsultasi.filter((c) => c.status === "Menunggu Tanggapan").length} masukan baru
+                    </span>
+                  </div>
+
+                  <div className="space-y-6 mt-4">
+                    {konsultasi.length > 0 ? (
+                      konsultasi.map((item) => (
+                        <div key={item.id} className="bg-slate-950 p-5 rounded-2xl border border-slate-800 space-y-3 relative">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <span className="text-xs text-white font-bold">{item.nama_lengkap}</span>
+                              <p className="text-[10px] text-slate-500 mt-0.5">Dikirim: {new Date(item.created_at).toLocaleDateString("id-ID")}</p>
+                            </div>
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              item.status === "Ditanggapi"
+                                ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400"
+                                : "bg-amber-500/10 border border-amber-500/20 text-amber-400"
+                            }`}>
+                              {item.status}
+                            </span>
+                          </div>
+
+                          <div className="bg-slate-900/60 p-3.5 rounded-xl border border-slate-800/80 text-xs text-slate-200 leading-5">
+                            {item.isi_masukan}
+                          </div>
+
+                          {item.tanggapan ? (
+                            <div className="bg-emerald-950/20 p-4 rounded-xl border border-emerald-900/40 text-xs text-slate-300 space-y-1">
+                              <div className="flex items-center gap-1 text-emerald-400 font-bold mb-1">
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                </svg>
+                                Tanggapan Admin Pusat:
+                              </div>
+                              <p className="italic">&quot;{item.tanggapan}&quot;</p>
+                            </div>
+                          ) : (
+                            <div className="space-y-3 pt-2">
+                              <textarea
+                                placeholder="Tulis jawaban/tanggapan resmi dari pengurus pusat..."
+                                value={replyText[item.id] || ""}
+                                onChange={(e) =>
+                                  setReplyText((prev) => ({ ...prev, [item.id]: e.target.value }))
+                                }
+                                className="w-full bg-slate-900 border border-slate-800 p-3 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 h-20 resize-none"
+                              />
+                              <button
+                                onClick={() => handleReplyConsultation(item.id)}
+                                className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-emerald-500 transition-colors shadow-lg shadow-emerald-950/30"
+                              >
+                                Kirim Tanggapan Resmi
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-center py-12 text-slate-500 font-semibold text-xs">
+                        Belum ada data kritik atau saran dari alumni.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </main>
+
+      {/* Footer */}
+      <footer className="bg-emerald-950/30 border-t border-emerald-900/50 py-4 text-center text-[10px] text-slate-500">
+        &copy; 2026 Ikatan Alumni Al Hasaniyyah Dalwa Pusat. All rights reserved.
+      </footer>
     </div>
   );
 }

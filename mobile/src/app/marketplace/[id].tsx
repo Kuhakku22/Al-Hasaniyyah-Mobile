@@ -67,7 +67,7 @@ export default function MarketplaceDetail() {
           <Text className="text-slate-300 font-bold text-sm mb-3">Deskripsi Produk:</Text>
           <Text className="text-slate-400 text-sm leading-6 mb-6">
             {product.description}{'\n\n'}
-            Produk ini diproduksi dan dikelola langsung oleh alumni Pondok Pesantren Darullughah Wadda'wah. Dengan membeli produk ini, antum turut mendukung kemandirian ekonomi keluarga besar alumni Al Hasaniyyah.
+            Produk ini diproduksi dan dikelola langsung oleh alumni Pondok Pesantren Darullughah Wadda&apos;wah. Dengan membeli produk ini, antum turut mendukung kemandirian ekonomi keluarga besar alumni Al Hasaniyyah.
           </Text>
 
           <View className="h-px bg-slate-800 mb-6" />

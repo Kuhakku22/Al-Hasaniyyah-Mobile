@@ -123,4 +123,45 @@ ALTER TABLE public.laporan_keuangan ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.event ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.event_peserta ENABLE ROW LEVEL SECURITY;
 
+-- Table: polling_questions
+CREATE TABLE public.polling_questions (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    pertanyaan TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Table: polling_options
+CREATE TABLE public.polling_options (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    question_id UUID REFERENCES public.polling_questions(id) ON DELETE CASCADE,
+    pilihan_teks VARCHAR(255) NOT NULL
+);
+
+-- Table: polling_votes
+CREATE TABLE public.polling_votes (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    question_id UUID REFERENCES public.polling_questions(id) ON DELETE CASCADE,
+    option_id UUID REFERENCES public.polling_options(id) ON DELETE CASCADE,
+    alumni_id UUID REFERENCES public.alumni(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(question_id, alumni_id)
+);
+
+ALTER TABLE public.polling_questions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.polling_options ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.polling_votes ENABLE ROW LEVEL SECURITY;
+
+-- Table: konsultasi_saran
+CREATE TABLE public.konsultasi_saran (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    alumni_id UUID REFERENCES public.alumni(id) ON DELETE CASCADE,
+    isi_masukan TEXT NOT NULL,
+    status VARCHAR(30) DEFAULT 'Menunggu Tanggapan' CHECK (status IN ('Menunggu Tanggapan', 'Ditanggapi')),
+    tanggapan TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE public.konsultasi_saran ENABLE ROW LEVEL SECURITY;
+
 -- Note: Proper RLS policies need to be added based on Supabase Auth integration.

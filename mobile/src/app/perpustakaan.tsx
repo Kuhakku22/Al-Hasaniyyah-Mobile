@@ -146,7 +146,7 @@ export default function PerpustakaanScreen() {
                 {isExpanded && (
                   <View className="px-4 pb-4 pt-2 border-t border-slate-700/50 bg-slate-800/40">
                     <Text className="text-slate-400 text-xs leading-5 mb-4 italic">
-                      "{item.description}"
+                      &quot;{item.description}&quot;
                     </Text>
 
                     <View className="flex-row gap-3">

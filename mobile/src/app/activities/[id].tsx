@@ -12,6 +12,15 @@ export default function ActivityDetail() {
 
   const activity = mockActivities.find(a => a.id === id);
 
+  const [isRegistered, setIsRegistered] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  React.useEffect(() => {
+    if (activity) {
+      setIsRegistered(activity.registered);
+    }
+  }, [activity]);
+
   if (!activity) {
     return (
       <SafeAreaView className="flex-1 bg-slate-900" edges={['top']}>
@@ -23,10 +32,6 @@ export default function ActivityDetail() {
       </SafeAreaView>
     );
   }
-
-  // State pendaftaran lokal untuk interaksi langsung
-  const [isRegistered, setIsRegistered] = useState(activity.registered);
-  const [isProcessing, setIsProcessing] = useState(false);
 
   const handleRegisterToggle = () => {
     setIsProcessing(true);
