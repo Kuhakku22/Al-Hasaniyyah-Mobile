@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, TextInput, ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, ImageBackground, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, TextInput, ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, ImageBackground, StyleSheet, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,34 +10,57 @@ export default function RegisterScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [generatedNia, setGeneratedNia] = useState('');
 
   const [formData, setFormData] = useState({
     nama: '',
-    angkatan: '',
+    tempatTanggalLahir: '',
+    alamatKtp: '',
     domisili: '',
+    tahunMasuk: '',
+    tahunKeluar: '',
+    tahunLulus: '',
     phone: '',
   });
 
   const handleRegister = async () => {
     // Basic validation
-    if (!formData.nama || !formData.angkatan || !formData.domisili || !formData.phone) {
-      alert('Mohon lengkapi semua data pendaftaran.');
+    if (
+      !formData.nama.trim() ||
+      !formData.tempatTanggalLahir.trim() ||
+      !formData.alamatKtp.trim() ||
+      !formData.domisili.trim() ||
+      !formData.tahunMasuk.trim() ||
+      !formData.tahunKeluar.trim() ||
+      !formData.tahunLulus.trim() ||
+      !formData.phone.trim()
+    ) {
+      Alert.alert('Form Belum Lengkap', 'Mohon lengkapi seluruh 8 data pendaftaran.');
       return;
     }
 
     setLoading(true);
     try {
-      const tempId = `REG-${formData.phone.replace(/[^0-9]/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
+      // Buat Nomor Induk Anggota (NIA) unik otomatis
+      const cleanPhone = formData.phone.replace(/[^0-9]/g, '');
+      const randomDigits = Math.floor(1000 + Math.random() * 9000);
+      const tempId = `NIA-${cleanPhone.slice(-4) || '0000'}-${randomDigits}`;
+
       const { error } = await supabase
         .from('alumni')
         .insert([
           {
-            nama_lengkap: formData.nama,
-            angkatan: parseInt(formData.angkatan) || null,
-            alamat_domisili: formData.domisili,
-            nomor_hp: formData.phone,
+            nama_lengkap: formData.nama.trim(),
+            tempat_tanggal_lahir: formData.tempatTanggalLahir.trim(),
+            alamat_ktp: formData.alamatKtp.trim(),
+            alamat_domisili: formData.domisili.trim(),
+            tahun_masuk: parseInt(formData.tahunMasuk) || null,
+            tahun_keluar: parseInt(formData.tahunKeluar) || null,
+            tahun_lulus: parseInt(formData.tahunLulus) || null,
+            angkatan: parseInt(formData.tahunLulus) || null,
+            nomor_hp: formData.phone.trim(),
             nomor_id_unik: tempId,
-            status_verifikasi: 'pending'
+            status_verifikasi: 'verified' // Auto verified agar dapat langsung digunakan untuk login
           }
         ]);
 
@@ -45,9 +68,10 @@ export default function RegisterScreen() {
         throw error;
       }
 
+      setGeneratedNia(tempId);
       setIsSuccess(true);
     } catch (e: any) {
-      alert('Pendaftaran gagal: ' + e.message);
+      Alert.alert('Pendaftaran Gagal', e.message);
     } finally {
       setLoading(false);
     }
@@ -74,18 +98,19 @@ export default function RegisterScreen() {
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={styles.container}
           >
-            <ScrollView contentContainerStyle={styles.scrollContent}>
+            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
               
               {!isSuccess ? (
                 <View style={styles.card}>
                   <ThemedText style={styles.welcomeText}>Bergabung Bersama Kami</ThemedText>
                   <ThemedText style={styles.instructionText}>
-                    Silakan isi formulir di bawah ini dengan data yang valid untuk memudahkan verifikasi pengurus.
+                    Silakan isi 8 formulir di bawah ini secara lengkap untuk pembuatan data alumni & NIA.
                   </ThemedText>
 
                   <View style={styles.formContainer}>
+                    {/* 1. Nama Lengkap sesuai KTP */}
                     <View style={styles.inputWrapper}>
-                      <Text style={styles.label}>Nama Lengkap (Sesuai KTP)</Text>
+                      <Text style={styles.label}>1. Nama Lengkap (Sesuai KTP)</Text>
                       <TextInput
                         style={styles.input}
                         placeholder="Contoh: Ahmad Fadillah"
@@ -95,21 +120,35 @@ export default function RegisterScreen() {
                       />
                     </View>
 
+                    {/* 2. Tempat Tanggal Lahir */}
                     <View style={styles.inputWrapper}>
-                      <Text style={styles.label}>Tahun Lulus (Angkatan)</Text>
+                      <Text style={styles.label}>2. Tempat Tanggal Lahir</Text>
                       <TextInput
                         style={styles.input}
-                        placeholder="Contoh: 2018"
+                        placeholder="Contoh: Pasuruan, 15 Agustus 1995"
                         placeholderTextColor="#94A3B8"
-                        keyboardType="numeric"
-                        maxLength={4}
-                        value={formData.angkatan}
-                        onChangeText={(t) => setFormData({...formData, angkatan: t})}
+                        value={formData.tempatTanggalLahir}
+                        onChangeText={(t) => setFormData({...formData, tempatTanggalLahir: t})}
                       />
                     </View>
 
+                    {/* 3. Alamat sesuai KTP */}
                     <View style={styles.inputWrapper}>
-                      <Text style={styles.label}>Domisili / Wilayah Saat Ini</Text>
+                      <Text style={styles.label}>3. Alamat (Sesuai KTP)</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Contoh: Jl. Merdeka No. 12, Pasuruan"
+                        placeholderTextColor="#94A3B8"
+                        multiline
+                        numberOfLines={2}
+                        value={formData.alamatKtp}
+                        onChangeText={(t) => setFormData({...formData, alamatKtp: t})}
+                      />
+                    </View>
+
+                    {/* 4. Domisili saat ini */}
+                    <View style={styles.inputWrapper}>
+                      <Text style={styles.label}>4. Domisili Saat Ini</Text>
                       <TextInput
                         style={styles.input}
                         placeholder="Contoh: Jakarta Selatan"
@@ -119,8 +158,51 @@ export default function RegisterScreen() {
                       />
                     </View>
 
+                    {/* 5. Tahun Masuk */}
                     <View style={styles.inputWrapper}>
-                      <Text style={styles.label}>Nomor WhatsApp Aktif</Text>
+                      <Text style={styles.label}>5. Tahun Masuk</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Contoh: 2012"
+                        placeholderTextColor="#94A3B8"
+                        keyboardType="numeric"
+                        maxLength={4}
+                        value={formData.tahunMasuk}
+                        onChangeText={(t) => setFormData({...formData, tahunMasuk: t})}
+                      />
+                    </View>
+
+                    {/* 6. Tahun Keluar */}
+                    <View style={styles.inputWrapper}>
+                      <Text style={styles.label}>6. Tahun Keluar</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Contoh: 2018"
+                        placeholderTextColor="#94A3B8"
+                        keyboardType="numeric"
+                        maxLength={4}
+                        value={formData.tahunKeluar}
+                        onChangeText={(t) => setFormData({...formData, tahunKeluar: t})}
+                      />
+                    </View>
+
+                    {/* 7. Tahun Lulus */}
+                    <View style={styles.inputWrapper}>
+                      <Text style={styles.label}>7. Tahun Lulus</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Contoh: 2018"
+                        placeholderTextColor="#94A3B8"
+                        keyboardType="numeric"
+                        maxLength={4}
+                        value={formData.tahunLulus}
+                        onChangeText={(t) => setFormData({...formData, tahunLulus: t})}
+                      />
+                    </View>
+
+                    {/* 8. No WhatsApp */}
+                    <View style={styles.inputWrapper}>
+                      <Text style={styles.label}>8. Nomor WhatsApp Aktif</Text>
                       <TextInput
                         style={styles.input}
                         placeholder="Contoh: 081234567890"
@@ -140,7 +222,7 @@ export default function RegisterScreen() {
                       <View className="flex-row items-center justify-center">
                         {loading && <ActivityIndicator color="#fff" style={{ marginRight: 8 }} />}
                         <ThemedText style={styles.buttonText}>
-                          {loading ? 'Mengirim Data...' : 'Kirim Pendaftaran'}
+                          {loading ? 'Menyimpan Data...' : 'Daftar Sekarang'}
                         </ThemedText>
                       </View>
                     </TouchableOpacity>
@@ -152,15 +234,24 @@ export default function RegisterScreen() {
                     <Ionicons name="checkmark-circle" size={50} color="#10b981" />
                   </View>
                   <Text className="font-bold text-2xl text-slate-800 mb-2 text-center">Alhamdulillah!</Text>
-                  <Text className="text-slate-500 text-center mb-8 leading-6">
-                    Pendaftaran Anda berhasil diajukan.{'\n'}Mohon menunggu verifikasi dari pengurus untuk mendapatkan Nomor Induk Anggota (NIA) yang akan dikirim via WhatsApp.
+                  <Text className="text-slate-600 text-center mb-4 leading-6">
+                    Pendaftaran Anda berhasil disimpan ke database.
+                  </Text>
+
+                  <View style={styles.niaBox}>
+                    <Text style={styles.niaLabel}>Nomor Induk Anggota (NIA) Anda:</Text>
+                    <Text style={styles.niaValue}>{generatedNia}</Text>
+                  </View>
+
+                  <Text className="text-slate-500 text-center text-xs mb-8 leading-5 px-4">
+                    Gunakan <Text className="font-bold text-slate-700">{formData.nama}</Text> dan NIA di atas untuk melakukan login ke aplikasi.
                   </Text>
                   
                   <TouchableOpacity 
                     className="w-full bg-emerald-600 p-4 rounded-xl items-center"
                     onPress={() => router.replace('/')}
                   >
-                    <Text className="text-white font-bold">Kembali ke Halaman Login</Text>
+                    <Text className="text-white font-bold text-base">Masuk / Login Sekarang</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -204,4 +295,16 @@ const styles = StyleSheet.create({
     color: '#0F172A',
   },
   buttonText: { color: '#FFFFFF', fontWeight: 'bold', fontSize: 16, letterSpacing: 0.5 },
+  niaBox: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#10B981',
+    borderWidth: 1.5,
+    borderRadius: 16,
+    padding: 16,
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  niaLabel: { fontSize: 13, color: '#047857', marginBottom: 4 },
+  niaValue: { fontSize: 22, fontWeight: '800', color: '#065F46', letterSpacing: 1 },
 });
