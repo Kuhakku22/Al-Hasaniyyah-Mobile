@@ -130,22 +130,9 @@ export default function AdminPortal() {
     sessionStorage.removeItem("adminAuth");
   };
 
-  // Fetch data from Supabase + API Fast-Response Pending
+  // Fetch data dari API Router Server secara Real-time Instan
   const fetchData = async () => {
     try {
-      let dbList: Alumni[] = [];
-      try {
-        const { data: alumniData, error: alumniErr } = await supabase
-          .from("alumni")
-          .select("*")
-          .order("created_at", { ascending: false });
-
-        if (!alumniErr && alumniData) {
-          dbList = alumniData;
-        }
-      } catch (err) {}
-
-      // Fetch pendaftar instan dari API route
       let apiList: Alumni[] = [];
       try {
         const apiRes = await fetch("/api/register");
@@ -155,40 +142,62 @@ export default function AdminPortal() {
         }
       } catch (err) {}
 
-      // Gabungkan seluruh data dengan deduplikasi berdasarkan nomor_hp / ID
-      const mergedMap = new Map<string, Alumni>();
-      MOCK_ALUMNI.forEach((a) => {
-        if (a.nomor_hp) mergedMap.set(a.nomor_hp, a);
-      });
-      dbList.forEach((a) => {
-        if (a.nomor_hp) mergedMap.set(a.nomor_hp, a);
-      });
+      let dbList: Alumni[] = [];
+      try {
+        const { data: alumniData } = await supabase
+          .from("alumni")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (alumniData) dbList = alumniData;
+      } catch (err) {}
+
+      const mergedList: Alumni[] = [];
+      const seenPhones = new Set<string>();
+
+      // 1. Pendaftar baru API di urutan PALING ATAS
       apiList.forEach((p) => {
-        if (p.nomor_hp) mergedMap.set(p.nomor_hp, p);
+        if (p.nomor_hp && !seenPhones.has(p.nomor_hp)) {
+          seenPhones.add(p.nomor_hp);
+          mergedList.push(p);
+        }
       });
 
-      const mergedList = Array.from(mergedMap.values());
-      setAlumni(mergedList);
+      // 2. Data DB Supabase
+      dbList.forEach((a) => {
+        if (a.nomor_hp && !seenPhones.has(a.nomor_hp)) {
+          seenPhones.add(a.nomor_hp);
+          mergedList.push(a);
+        }
+      });
 
-      // Fetch data iuran, infak, konsultasi
+      // 3. Mock data cadangan
+      MOCK_ALUMNI.forEach((a) => {
+        if (a.nomor_hp && !seenPhones.has(a.nomor_hp)) {
+          seenPhones.add(a.nomor_hp);
+          mergedList.push(a);
+        }
+      });
+
+      setAlumni(mergedList);
       setIuran(MOCK_IURAN);
       setInfak(MOCK_INFAK);
       setKonsultasi(MOCK_KONSULTASI);
     } catch (e) {
       console.warn("Error fetching admin data:", e);
-    } finally {
+    } fontally {
       setLoading(false);
     }
   };
 
-  // Polling otomatis setiap 2 detik agar pendaftar baru langsung muncul secara otomatis
+  // Polling otomatis setiap 1 detik agar pendaftar baru langsung muncul secara otomatis
   useEffect(() => {
     if (!isLoggedIn) return;
 
     fetchData();
     const interval = setInterval(() => {
       fetchData();
-    }, 2000);
+    }, 1000);
 
     return () => clearInterval(interval);
   }, [isLoggedIn]);
@@ -229,7 +238,7 @@ export default function AdminPortal() {
         .eq("id", id);
     } catch (e) {}
 
-    // Mock update lokal
+    // Update lokal instan
     setAlumni(
       alumni.map((a) =>
         a.id === id ? { ...a, nomor_id_unik: rawNia, status_verifikasi: "verified" } : a

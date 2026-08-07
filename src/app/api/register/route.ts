@@ -1,36 +1,56 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
-// In-memory fallback store for local development & cross-port testing
+// Global memory store
 const pendingRegistrations: any[] = [];
 
+// Header CORS Universal
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: corsHeaders });
+}
+
 export async function GET() {
+  let dbList: any[] = [];
   try {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("alumni")
       .select("*")
       .order("created_at", { ascending: false });
-
-    if (!error && data) {
-      // Gabungkan data DB dengan pending memory
-      const mergedMap = new Map<string, any>();
-      pendingRegistrations.forEach((p) => {
-        if (p.nomor_hp) mergedMap.set(p.nomor_hp, p);
-      });
-      data.forEach((a) => {
-        if (a.nomor_hp) mergedMap.set(a.nomor_hp, a);
-      });
-      return NextResponse.json({ success: true, data: Array.from(mergedMap.values()) });
-    }
+    if (data) dbList = data;
   } catch (err) {}
 
-  return NextResponse.json({ success: true, data: pendingRegistrations });
+  const mergedList: any[] = [];
+  const seenPhones = new Set<string>();
+
+  // 1. Pendaftar baru dari memori API di urutan PALING ATAS
+  pendingRegistrations.forEach((item) => {
+    if (item.nomor_hp && !seenPhones.has(item.nomor_hp)) {
+      seenPhones.add(item.nomor_hp);
+      mergedList.push(item);
+    }
+  });
+
+  // 2. Data DB
+  dbList.forEach((item) => {
+    if (item.nomor_hp && !seenPhones.has(item.nomor_hp)) {
+      seenPhones.add(item.nomor_hp);
+      mergedList.push(item);
+    }
+  });
+
+  return NextResponse.json({ success: true, data: mergedList }, { headers: corsHeaders });
 }
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { nama, phone, domisili, tahunMasuk, tahunKeluar, tahunLulus, tempatTanggalLahir, alamatKtp } = body;
+    const { nama, phone, domisili, tahunMasuk, tahunKeluar, tahunLulus } = body;
 
     const cleanPhone = (phone || "").replace(/[^0-9]/g, "");
     const randomDigits = Math.floor(1000 + Math.random() * 9000);
@@ -49,10 +69,10 @@ export async function POST(request: Request) {
       created_at: new Date().toISOString(),
     };
 
-    // 1. Simpan ke Memory lokal
+    // Unshift ke memori lokal agar menjadi yang PALING ATAS
     pendingRegistrations.unshift(newRecord);
 
-    // 2. Simpan ke Supabase di background
+    // Simpan ke Supabase di background
     try {
       await supabase.from("alumni").insert([{
         nama_lengkap: newRecord.nama_lengkap,
@@ -62,12 +82,10 @@ export async function POST(request: Request) {
         nomor_hp: newRecord.nomor_hp,
         status_verifikasi: "pending",
       }]);
-    } catch (dbErr) {
-      console.warn("API Supabase insert fallback:", dbErr);
-    }
+    } catch (dbErr) {}
 
-    return NextResponse.json({ success: true, tempId, data: newRecord });
+    return NextResponse.json({ success: true, tempId, data: newRecord }, { headers: corsHeaders });
   } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message || "Gagal memproses pendaftaran" }, { status: 400 });
+    return NextResponse.json({ success: false, error: err.message || "Gagal" }, { status: 400, headers: corsHeaders });
   }
 }
