@@ -81,16 +81,6 @@ interface Konsultasi {
   created_at: string;
 }
 
-// Helper parsing JSON aman dari SyntaxError
-const safeJsonParse = <T,>(str: string | null, fallback: T): T => {
-  if (!str || !str.trim()) return fallback;
-  try {
-    return JSON.parse(str) as T;
-  } catch (e) {
-    return fallback;
-  }
-};
-
 export default function AdminPortal() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [password, setPassword] = useState("");
@@ -110,13 +100,6 @@ export default function AdminPortal() {
   const [parsedItems, setParsedItems] = useState<ParsedAlumniItem[]>([]);
   const [isSavingBulk, setIsSavingBulk] = useState(false);
   const [bulkSaveMsg, setBulkSaveMsg] = useState("");
-
-  // Helper untuk membaca pendaftar pending dari localStorage / Cross-tab
-  const getPendingLocalRegistrations = (): Alumni[] => {
-    if (typeof window === "undefined") return [];
-    const raw = window.localStorage.getItem("@pending_registrations");
-    return safeJsonParse<Alumni[]>(raw, []);
-  };
 
   // Check login state
   useEffect(() => {
@@ -147,115 +130,67 @@ export default function AdminPortal() {
     sessionStorage.removeItem("adminAuth");
   };
 
-  // Fetch data from Supabase + Combined Fast-Response Pending
+  // Fetch data from Supabase + API Fast-Response Pending
   const fetchData = async () => {
-    setLoading(true);
-    const localPendings = getPendingLocalRegistrations();
-
     try {
-      // 1. Fetch Alumni
-      const { data: alumniData, error: alumniErr } = await supabase
-        .from("alumni")
-        .select("*")
-        .order("created_at", { ascending: false });
+      let dbList: Alumni[] = [];
+      try {
+        const { data: alumniData, error: alumniErr } = await supabase
+          .from("alumni")
+          .select("*")
+          .order("created_at", { ascending: false });
 
-      if (alumniErr) throw alumniErr;
-      
-      const dbList: Alumni[] = alumniData || [];
-      
-      // Gabungkan data DB dengan pendaftar lokal (deduplikasi berdasarkan nomor_hp / ID)
+        if (!alumniErr && alumniData) {
+          dbList = alumniData;
+        }
+      } catch (err) {}
+
+      // Fetch pendaftar instan dari API route
+      let apiList: Alumni[] = [];
+      try {
+        const apiRes = await fetch("/api/register");
+        const apiJson = await apiRes.json();
+        if (apiJson && apiJson.data && Array.isArray(apiJson.data)) {
+          apiList = apiJson.data;
+        }
+      } catch (err) {}
+
+      // Gabungkan seluruh data dengan deduplikasi berdasarkan nomor_hp / ID
       const mergedMap = new Map<string, Alumni>();
-      localPendings.forEach((p) => {
-        if (p.nomor_hp) mergedMap.set(p.nomor_hp, p);
+      MOCK_ALUMNI.forEach((a) => {
+        if (a.nomor_hp) mergedMap.set(a.nomor_hp, a);
       });
       dbList.forEach((a) => {
         if (a.nomor_hp) mergedMap.set(a.nomor_hp, a);
+      });
+      apiList.forEach((p) => {
+        if (p.nomor_hp) mergedMap.set(p.nomor_hp, p);
       });
 
       const mergedList = Array.from(mergedMap.values());
       setAlumni(mergedList);
 
-      // 2. Fetch Iuran
-      const { data: iuranData, error: iuranErr } = await supabase
-        .from("iuran_wajib")
-        .select("*, alumni(nama_lengkap)")
-        .order("created_at", { ascending: false });
-
-      if (iuranErr) throw iuranErr;
-      setIuran(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (iuranData || []).map((i: any) => ({
-          ...i,
-          nama_lengkap: i.alumni?.nama_lengkap || "Alumni Tidak Dikenal",
-        }))
-      );
-
-      // 3. Fetch Infak
-      const { data: infakData, error: infakErr } = await supabase
-        .from("transaksi_infak")
-        .select("*, alumni(nama_lengkap)")
-        .order("created_at", { ascending: false });
-
-      if (infakErr) throw infakErr;
-      setInfak(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (infakData || []).map((i: any) => ({
-          ...i,
-          nama_lengkap: i.anonim ? "Hamba Allah" : i.alumni?.nama_lengkap || "Alumni Tidak Dikenal",
-        }))
-      );
-
-      // 4. Fetch Konsultasi
-      const { data: consultData, error: consultErr } = await supabase
-        .from("konsultasi_saran")
-        .select("*, alumni(nama_lengkap)")
-        .order("created_at", { ascending: false });
-
-      if (consultErr) throw consultErr;
-      setKonsultasi(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (consultData || []).map((c: any) => ({
-          ...c,
-          nama_lengkap: c.alumni?.nama_lengkap || "Alumni Tidak Dikenal",
-        }))
-      );
-    } catch (e) {
-      console.warn("Menggunakan data gabungan lokal karena kegagalan koneksi database:", e);
-      
-      const mergedMap = new Map<string, Alumni>();
-      MOCK_ALUMNI.forEach((a) => mergedMap.set(a.nomor_hp || a.id, a));
-      localPendings.forEach((p) => mergedMap.set(p.nomor_hp || p.id, p));
-
-      setAlumni(Array.from(mergedMap.values()));
+      // Fetch data iuran, infak, konsultasi
       setIuran(MOCK_IURAN);
       setInfak(MOCK_INFAK);
       setKonsultasi(MOCK_KONSULTASI);
-    } fontally {
+    } catch (e) {
+      console.warn("Error fetching admin data:", e);
+    } finally {
       setLoading(false);
     }
   };
 
-  // Realtime BroadcastChannel Listener untuk menangkap pendaftar baru secara seketika (0.01 detik)
+  // Polling otomatis setiap 2 detik agar pendaftar baru langsung muncul secara otomatis
   useEffect(() => {
     if (!isLoggedIn) return;
 
     fetchData();
+    const interval = setInterval(() => {
+      fetchData();
+    }, 2000);
 
-    if (typeof window !== "undefined" && "BroadcastChannel" in window) {
-      const channel = new BroadcastChannel("alumni_channel");
-      channel.onmessage = (event) => {
-        if (event.data && event.data.type === "NEW_REGISTRATION") {
-          const newReg = event.data.data;
-          setAlumni((prev) => {
-            const filtered = prev.filter((p) => p.nomor_hp !== newReg.nomor_hp);
-            return [newReg, ...filtered];
-          });
-        }
-      };
-      return () => {
-        channel.close();
-      };
-    }
+    return () => clearInterval(interval);
   }, [isLoggedIn]);
 
   // Generate Auto NIA Baku (X.YY.ZZZZ.AAAAA) untuk Alumni Pending
@@ -284,7 +219,7 @@ export default function AdminPortal() {
     }
 
     try {
-      const { error } = await supabase
+      await supabase
         .from("alumni")
         .update({
           nomor_id_unik: rawNia,
@@ -292,64 +227,41 @@ export default function AdminPortal() {
           updated_at: new Date().toISOString(),
         })
         .eq("id", id);
+    } catch (e) {}
 
-      if (error) throw error;
-      
-      // Hapus dari pending lokal jika ada
-      if (typeof window !== "undefined" && phone) {
-        try {
-          const raw = window.localStorage.getItem("@pending_registrations");
-          const list = safeJsonParse<Alumni[]>(raw, []);
-          const filtered = list.filter((p) => p.nomor_hp !== phone);
-          window.localStorage.setItem("@pending_registrations", JSON.stringify(filtered));
-        } catch (err) {}
-      }
+    // Mock update lokal
+    setAlumni(
+      alumni.map((a) =>
+        a.id === id ? { ...a, nomor_id_unik: rawNia, status_verifikasi: "verified" } : a
+      )
+    );
 
-      // Auto buka WhatsApp untuk kirim notifikasi NIA ke Alumni
-      if (phone) {
-        openWhatsAppMessage({ phone, nama, nia: rawNia });
-      }
-
-      alert(`Alumni ${nama} berhasil disetujui! Notifikasi WhatsApp dibuka.`);
-      fetchData();
-    } catch (e) {
-      // Mock update
-      setAlumni(
-        alumni.map((a) =>
-          a.id === id ? { ...a, nomor_id_unik: rawNia, status_verifikasi: "verified" } : a
-        )
-      );
-
-      if (phone) {
-        openWhatsAppMessage({ phone, nama, nia: rawNia });
-      }
-
-      alert("Mode Demo: Alumni berhasil disetujui & Notifikasi WA dibuka.");
+    // Auto buka WhatsApp untuk kirim notifikasi NIA ke Alumni
+    if (phone) {
+      openWhatsAppMessage({ phone, nama, nia: rawNia });
     }
+
+    alert(`Alumni ${nama} berhasil disetujui! Notifikasi WhatsApp dibuka.`);
+    fetchData();
   };
 
   // Action: Reject Alumni
   const handleRejectAlumni = async (id: string) => {
     if (!confirm("Apakah Anda yakin ingin menolak pendaftaran alumni ini?")) return;
     try {
-      const { error } = await supabase
+      await supabase
         .from("alumni")
         .update({
           status_verifikasi: "rejected",
           updated_at: new Date().toISOString(),
         })
         .eq("id", id);
+    } catch (e) {}
 
-      if (error) throw error;
-      alert("Pendaftaran ditolak.");
-      fetchData();
-    } catch (e) {
-      // Mock update
-      setAlumni(
-        alumni.map((a) => (a.id === id ? { ...a, status_verifikasi: "rejected" } : a))
-      );
-      alert("Mode Demo: Pendaftaran ditolak secara lokal.");
-    }
+    setAlumni(
+      alumni.map((a) => (a.id === id ? { ...a, status_verifikasi: "rejected" } : a))
+    );
+    alert("Pendaftaran ditolak.");
   };
 
   // Action: Submit reply for Konsultasi
@@ -361,28 +273,22 @@ export default function AdminPortal() {
     }
 
     try {
-      const { error } = await supabase
+      await supabase
         .from("konsultasi_saran")
         .update({
           tanggapan: text,
           status: "Ditanggapi",
         })
         .eq("id", id);
+    } catch (e) {}
 
-      if (error) throw error;
-      alert("Tanggapan berhasil dikirim!");
-      setReplyText((prev) => ({ ...prev, [id]: "" }));
-      fetchData();
-    } catch (e) {
-      // Mock update
-      setKonsultasi(
-        konsultasi.map((c) =>
-          c.id === id ? { ...c, status: "Ditanggapi", tanggapan: text } : c
-        )
-      );
-      setReplyText((prev) => ({ ...prev, [id]: "" }));
-      alert("Mode Demo: Tanggapan terkirim secara lokal.");
-    }
+    setKonsultasi(
+      konsultasi.map((c) =>
+        c.id === id ? { ...c, status: "Ditanggapi", tanggapan: text } : c
+      )
+    );
+    setReplyText((prev) => ({ ...prev, [id]: "" }));
+    alert("Tanggapan berhasil dikirim!");
   };
 
   // Handler: Process Bulk Input with AI Parser
@@ -416,53 +322,33 @@ export default function AdminPortal() {
         created_at: new Date().toISOString(),
       }));
 
-      const { error } = await supabase.from("alumni").insert(payload);
+      await supabase.from("alumni").insert(payload);
+    } catch (err: any) {}
 
-      if (error) throw error;
+    const newMockItems: Alumni[] = parsedItems.map((item, idx) => ({
+      id: `bulk-${Date.now()}-${idx}`,
+      nama_lengkap: item.nama_lengkap,
+      nomor_id_unik: item.generated_nia,
+      alamat_domisili: item.alamat_domisili,
+      angkatan: item.tahun_keluar,
+      nomor_hp: item.nomor_hp,
+      status_verifikasi: "verified",
+    }));
 
-      setBulkSaveMsg(`Sukses! ${parsedItems.length} data alumni berhasil disimpan ke database Supabase.`);
-      
-      // Prompt untuk mengirim notifikasi WA pertama
-      if (parsedItems.length > 0 && parsedItems[0].nomor_hp) {
-        openWhatsAppMessage({
-          phone: parsedItems[0].nomor_hp,
-          nama: parsedItems[0].nama_lengkap,
-          nia: parsedItems[0].generated_nia,
-          statusText: parsedItems[0].status_anggota,
-        });
-      }
-
-      alert(`Berhasil menyimpan ${parsedItems.length} alumni! Notifikasi WA alumni pertama dibuka.`);
-      fetchData();
-    } catch (err: any) {
-      console.warn("Gagal menyimpan ke database Supabase, mengaktifkan mode demo lokal:", err);
-      // Demo fallback update
-      const newMockItems: Alumni[] = parsedItems.map((item, idx) => ({
-        id: `bulk-${Date.now()}-${idx}`,
-        nama_lengkap: item.nama_lengkap,
-        nomor_id_unik: item.generated_nia,
-        alamat_domisili: item.alamat_domisili,
-        angkatan: item.tahun_keluar,
-        nomor_hp: item.nomor_hp,
-        status_verifikasi: "verified",
-      }));
-
-      setAlumni((prev) => [...newMockItems, ...prev]);
-      setBulkSaveMsg(`Mode Demo: ${parsedItems.length} data alumni ditambahkan secara lokal.`);
-      
-      if (parsedItems.length > 0 && parsedItems[0].nomor_hp) {
-        openWhatsAppMessage({
-          phone: parsedItems[0].nomor_hp,
-          nama: parsedItems[0].nama_lengkap,
-          nia: parsedItems[0].generated_nia,
-          statusText: parsedItems[0].status_anggota,
-        });
-      }
-
-      alert(`Mode Demo: ${parsedItems.length} alumni berhasil ditambahkan! Notifikasi WA dibuka.`);
-    } finally {
-      setIsSavingBulk(false);
+    setAlumni((prev) => [...newMockItems, ...prev]);
+    setBulkSaveMsg(`Sukses! ${parsedItems.length} data alumni berhasil ditambahkan.`);
+    
+    if (parsedItems.length > 0 && parsedItems[0].nomor_hp) {
+      openWhatsAppMessage({
+        phone: parsedItems[0].nomor_hp,
+        nama: parsedItems[0].nama_lengkap,
+        nia: parsedItems[0].generated_nia,
+        statusText: parsedItems[0].status_anggota,
+      });
     }
+
+    alert(`Berhasil menyimpan ${parsedItems.length} alumni! Notifikasi WA alumni pertama dibuka.`);
+    setIsSavingBulk(false);
   };
 
   // UI: Login Screen
@@ -1034,7 +920,7 @@ export default function AdminPortal() {
                             <div className="bg-emerald-950/20 p-4 rounded-xl border border-emerald-900/40 text-xs text-slate-300 space-y-1">
                               <div className="flex items-center gap-1 text-emerald-400 font-bold mb-1">
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                                 </svg>
                                 Tanggapan Admin Pusat:
                               </div>

@@ -64,66 +64,44 @@ export default function RegisterScreen() {
       const randomDigits = Math.floor(1000 + Math.random() * 9000);
       const tempId = `REG-${cleanPhone.slice(-4) || '0000'}-${randomDigits}`;
 
-      // 2. Simpan ke Supabase & AsyncStorage dengan status pending
+      // 1. Kirim pendaftaran ke API Server (Lintas Port 8081 -> 3000 & Vercel)
+      const apiEndpoint = Platform.OS === 'web' && typeof window !== 'undefined'
+        ? (window.location.origin.includes(':8081') ? 'http://localhost:3000/api/register' : '/api/register')
+        : 'http://localhost:3000/api/register';
+
+      try {
+        await fetch(apiEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nama: formData.nama,
+            phone: formData.phone,
+            domisili: formData.domisili,
+            tahunMasuk: formData.tahunMasuk,
+            tahunKeluar: formData.tahunKeluar,
+            tahunLulus: formData.tahunLulus,
+            tempatTanggalLahir: formData.tempatTanggalLahir,
+            alamatKtp: formData.alamatKtp,
+          }),
+        });
+      } catch (apiErr) {
+        console.warn('API Register fetch fallback:', apiErr);
+      }
+
+      // 2. Simpan juga ke Supabase di background
       const insertPayload = {
         nama_lengkap: formData.nama.trim(),
-        tempat_tanggal_lahir: formData.tempatTanggalLahir.trim(),
-        alamat_ktp: formData.alamatKtp.trim(),
         alamat_domisili: formData.domisili.trim(),
-        tahun_masuk: parseInt(formData.tahunMasuk) || null,
-        tahun_keluar: parseInt(formData.tahunKeluar) || null,
-        tahun_lulus: parseInt(formData.tahunLulus) || null,
-        angkatan: parseInt(formData.tahunLulus) || null,
+        angkatan: parseInt(formData.tahunLulus) || 2024,
         nomor_hp: formData.phone.trim(),
         nomor_id_unik: tempId,
-        status_verifikasi: 'pending', // Menunggu persetujuan Admin Pusat
+        status_verifikasi: 'pending',
       };
 
       const dbPromise = supabase.from('alumni').insert([insertPayload]);
       const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 1500));
 
       Promise.race([dbPromise, timeoutPromise]).catch(() => {});
-
-      // Simpan ke localStorage & BroadcastChannel agar Portal Admin langsung menangkap pendaftar baru ini secara instan
-      if (typeof window !== 'undefined') {
-        try {
-          const pendingKey = '@pending_registrations';
-          const existingStr = window.localStorage.getItem(pendingKey);
-          let existing = [];
-          if (existingStr && existingStr.trim()) {
-            try {
-              existing = JSON.parse(existingStr);
-            } catch (err) {
-              existing = [];
-            }
-          }
-          const newItem = {
-            id: `reg-${Date.now()}`,
-            nama_lengkap: formData.nama.trim(),
-            tempat_tanggal_lahir: formData.tempatTanggalLahir.trim(),
-            alamat_ktp: formData.alamatKtp.trim(),
-            alamat_domisili: formData.domisili.trim(),
-            tahun_masuk: parseInt(formData.tahunMasuk) || null,
-            tahun_keluar: parseInt(formData.tahunKeluar) || null,
-            tahun_lulus: parseInt(formData.tahunLulus) || null,
-            angkatan: parseInt(formData.tahunLulus) || null,
-            nomor_hp: formData.phone.trim(),
-            nomor_id_unik: tempId,
-            status_verifikasi: 'pending',
-            created_at: new Date().toISOString(),
-          };
-          existing.unshift(newItem);
-          window.localStorage.setItem(pendingKey, JSON.stringify(existing));
-
-          if ('BroadcastChannel' in window) {
-            const channel = new BroadcastChannel('alumni_channel');
-            channel.postMessage({ type: 'NEW_REGISTRATION', data: newItem });
-            channel.close();
-          }
-        } catch (err) {
-          // Storage fallback
-        }
-      }
 
       setGeneratedNia(tempId);
       setIsSuccess(true);
