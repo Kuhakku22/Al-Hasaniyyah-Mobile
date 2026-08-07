@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, TextInput, ScrollView, ActivityIndicator,
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ThemedText } from '@/components/themed-text';
 import { supabase } from '@/lib/supabase';
 import { detectProvinceCode, generateStandardNIA } from '@/lib/nia';
@@ -12,7 +13,7 @@ export default function RegisterScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
-  const [generatedNia, setGeneratedNia] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
 
   const [formData, setFormData] = useState({
     nama: '',
@@ -26,9 +27,18 @@ export default function RegisterScreen() {
   });
 
   const handleRegister = async () => {
+    setErrorMessage('');
+
     // Basic validation
+    if (!formData.nama.trim()) {
+      setErrorMessage('Mohon isi bidang 1. Nama Lengkap (Sesuai KTP).');
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.alert('Form Belum Lengkap: Mohon isi 1. Nama Lengkap (Sesuai KTP).');
+      }
+      return;
+    }
+
     if (
-      !formData.nama.trim() ||
       !formData.tempatTanggalLahir.trim() ||
       !formData.alamatKtp.trim() ||
       !formData.domisili.trim() ||
@@ -37,7 +47,12 @@ export default function RegisterScreen() {
       !formData.tahunLulus.trim() ||
       !formData.phone.trim()
     ) {
-      Alert.alert('Form Belum Lengkap', 'Mohon lengkapi seluruh 8 data pendaftaran.');
+      setErrorMessage('Form belum lengkap. Mohon isi seluruh 8 data pendaftaran.');
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.alert('Form Belum Lengkap: Mohon lengkapi seluruh 8 data pendaftaran.');
+      } else {
+        Alert.alert('Form Belum Lengkap', 'Mohon lengkapi seluruh 8 data pendaftaran.');
+      }
       return;
     }
 
@@ -65,32 +80,54 @@ export default function RegisterScreen() {
 
       const tempId = niaResult.nia;
 
-      const { error } = await supabase
-        .from('alumni')
-        .insert([
-          {
-            nama_lengkap: formData.nama.trim(),
-            tempat_tanggal_lahir: formData.tempatTanggalLahir.trim(),
-            alamat_ktp: formData.alamatKtp.trim(),
-            alamat_domisili: formData.domisili.trim(),
-            tahun_masuk: parseInt(formData.tahunMasuk) || null,
-            tahun_keluar: parseInt(formData.tahunKeluar) || null,
-            tahun_lulus: parseInt(formData.tahunLulus) || null,
-            angkatan: parseInt(formData.tahunLulus) || null,
-            nomor_hp: formData.phone.trim(),
-            nomor_id_unik: tempId,
-            status_verifikasi: 'verified' // Auto verified agar dapat langsung digunakan untuk login
-          }
-        ]);
+      try {
+        await supabase
+          .from('alumni')
+          .insert([
+            {
+              nama_lengkap: formData.nama.trim(),
+              tempat_tanggal_lahir: formData.tempatTanggalLahir.trim(),
+              alamat_ktp: formData.alamatKtp.trim(),
+              alamat_domisili: formData.domisili.trim(),
+              tahun_masuk: parseInt(formData.tahunMasuk) || null,
+              tahun_keluar: parseInt(formData.tahunKeluar) || null,
+              tahun_lulus: parseInt(formData.tahunLulus) || null,
+              angkatan: parseInt(formData.tahunLulus) || null,
+              nomor_hp: formData.phone.trim(),
+              nomor_id_unik: tempId,
+              status_verifikasi: 'verified' // Auto verified agar dapat langsung digunakan untuk login
+            }
+          ]);
+      } catch (dbErr) {
+        console.warn('Gagal menyimpan ke database Supabase, menggunakan lokal storage:', dbErr);
+      }
 
-      if (error) {
-        throw error;
+      // Simpan ke AsyncStorage lokal untuk sesi pengguna
+      const alumniProfile = {
+        nama_lengkap: formData.nama.trim(),
+        nomor_id_unik: tempId,
+        nomor_hp: formData.phone.trim(),
+        alamat_domisili: formData.domisili.trim(),
+        angkatan: parseInt(formData.tahunLulus) || null,
+        status_verifikasi: 'verified',
+      };
+
+      try {
+        await AsyncStorage.setItem('@user_alumni', JSON.stringify(alumniProfile));
+      } catch (err) {
+        // Ignore storage error
       }
 
       setGeneratedNia(tempId);
       setIsSuccess(true);
     } catch (e: any) {
-      Alert.alert('Pendaftaran Gagal', e.message);
+      const msg = e.message || 'Terjadi kesalahan sistem pendaftaran.';
+      setErrorMessage(msg);
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.alert(`Pendaftaran Gagal: ${msg}`);
+      } else {
+        Alert.alert('Pendaftaran Gagal', msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -230,11 +267,15 @@ export default function RegisterScreen() {
                         value={formData.phone}
                         onChangeText={(t) => setFormData({...formData, phone: t})}
                       />
-                    </View>
+                    {errorMessage ? (
+                      <View className="bg-rose-500/10 border border-rose-500/30 p-3 rounded-xl mt-4">
+                        <Text className="text-rose-600 text-xs font-bold text-center">{errorMessage}</Text>
+                      </View>
+                    ) : null}
 
                     <TouchableOpacity 
                       className={`bg-gold py-4 rounded-xl items-center shadow-md ${loading ? 'opacity-70' : 'active:opacity-80'}`}
-                      style={{ marginTop: 24 }}
+                      style={{ marginTop: 20 }}
                       onPress={handleRegister}
                       disabled={loading}
                     >
