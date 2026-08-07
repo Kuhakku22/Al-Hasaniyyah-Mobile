@@ -261,6 +261,8 @@ export default function RegisterScreen() {
                         value={formData.phone}
                         onChangeText={(t) => setFormData({...formData, phone: t})}
                       />
+                    </View>
+
                     {errorMessage ? (
                       <View className="bg-rose-500/10 border border-rose-500/30 p-3 rounded-xl mt-4">
                         <Text className="text-rose-600 text-xs font-bold text-center">{errorMessage}</Text>
