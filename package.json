@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build && cd mobile && npx expo export --platform web && node -e \"const fs=require('fs'); if(fs.existsSync('dist')) fs.cpSync('dist', '../dist', {recursive: true});\"",
+    "build": "next build",
     "start": "next start",
     "lint": "eslint"
   },
