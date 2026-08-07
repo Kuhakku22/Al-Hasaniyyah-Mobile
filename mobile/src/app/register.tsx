@@ -59,39 +59,12 @@ export default function RegisterScreen() {
 
     setLoading(true);
     try {
-      // 1. Hitung Nomor Induk Anggota (NIA) Baku resmi secara instan
-      const sequenceNum = Math.floor(1000 + Math.random() * 9000);
-      const provDetected = detectProvinceCode(formData.domisili.trim());
-      const niaResult = generateStandardNIA({
-        statusText: 'Alumni',
-        provinceCode: provDetected.code,
-        tahunMasuk: formData.tahunMasuk.trim(),
-        tahunKeluar: formData.tahunKeluar.trim(),
-        sequenceNumber: sequenceNum,
-      });
+      // ID Pendaftaran Sementara
+      const cleanPhone = formData.phone.replace(/[^0-9]/g, '');
+      const randomDigits = Math.floor(1000 + Math.random() * 9000);
+      const tempId = `REG-${cleanPhone.slice(-4) || '0000'}-${randomDigits}`;
 
-      const tempId = niaResult.nia;
-
-      // 2. Simpan ke AsyncStorage / LocalStorage secara instan
-      const alumniProfile = {
-        nama_lengkap: formData.nama.trim(),
-        nomor_id_unik: tempId,
-        nomor_hp: formData.phone.trim(),
-        alamat_domisili: formData.domisili.trim(),
-        angkatan: parseInt(formData.tahunLulus) || null,
-        status_verifikasi: 'verified',
-      };
-
-      try {
-        await AsyncStorage.setItem('@user_alumni', JSON.stringify(alumniProfile));
-        if (Platform.OS === 'web' && typeof window !== 'undefined') {
-          window.localStorage.setItem('@user_alumni', JSON.stringify(alumniProfile));
-        }
-      } catch (err) {
-        // Storage fallback
-      }
-
-      // 3. Kirim ke Supabase di background dengan timeout 1.5 detik agar tidak menghambat tampilan
+      // 2. Simpan ke Supabase & AsyncStorage dengan status pending
       const insertPayload = {
         nama_lengkap: formData.nama.trim(),
         tempat_tanggal_lahir: formData.tempatTanggalLahir.trim(),
@@ -103,16 +76,14 @@ export default function RegisterScreen() {
         angkatan: parseInt(formData.tahunLulus) || null,
         nomor_hp: formData.phone.trim(),
         nomor_id_unik: tempId,
-        status_verifikasi: 'verified',
+        status_verifikasi: 'pending', // Menunggu persetujuan Admin Pusat
       };
 
       const dbPromise = supabase.from('alumni').insert([insertPayload]);
       const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 1500));
 
-      // Jalankan tanpa memblokir pengguna
       Promise.race([dbPromise, timeoutPromise]).catch(() => {});
 
-      // 4. Langsung tampilkan layar sukses!
       setGeneratedNia(tempId);
       setIsSuccess(true);
     } catch (e: any) {
@@ -155,7 +126,7 @@ export default function RegisterScreen() {
                 <View style={styles.card}>
                   <ThemedText style={styles.welcomeText}>Bergabung Bersama Kami</ThemedText>
                   <ThemedText style={styles.instructionText}>
-                    Silakan isi 8 formulir di bawah ini secara lengkap untuk pembuatan data alumni & NIA.
+                    Silakan isi 8 formulir di bawah ini secara lengkap untuk verifikasi pendaftaran alumni.
                   </ThemedText>
 
                   <View style={styles.formContainer}>
@@ -202,7 +173,7 @@ export default function RegisterScreen() {
                       <Text style={styles.label}>4. Domisili Saat Ini</Text>
                       <TextInput
                         style={styles.input}
-                        placeholder="Contoh: Jakarta Selatan"
+                        placeholder="Contoh: Surabaya, Jawa Timur"
                         placeholderTextColor="#94A3B8"
                         value={formData.domisili}
                         onChangeText={(t) => setFormData({...formData, domisili: t})}
@@ -214,7 +185,7 @@ export default function RegisterScreen() {
                       <Text style={styles.label}>5. Tahun Masuk</Text>
                       <TextInput
                         style={styles.input}
-                        placeholder="Contoh: 2012"
+                        placeholder="Contoh: 2015"
                         placeholderTextColor="#94A3B8"
                         keyboardType="numeric"
                         maxLength={4}
@@ -279,51 +250,39 @@ export default function RegisterScreen() {
                       <View className="flex-row items-center justify-center">
                         {loading && <ActivityIndicator color="#fff" style={{ marginRight: 8 }} />}
                         <ThemedText style={styles.buttonText}>
-                          {loading ? 'Menyimpan Data...' : 'Daftar Sekarang'}
+                          {loading ? 'Menyimpan Data...' : 'Kirim Pendaftaran'}
                         </ThemedText>
                       </View>
                     </TouchableOpacity>
                   </View>
                 </View>
               ) : (
-                <View style={[styles.card, { alignItems: 'center', paddingVertical: 40 }]}>
-                  <View className="w-20 h-20 bg-emerald-500/20 rounded-full items-center justify-center mb-6">
-                    <Ionicons name="checkmark-circle" size={50} color="#10b981" />
+                <View style={[styles.card, { alignItems: 'center', paddingVertical: 36 }]}>
+                  <View className="w-20 h-20 bg-amber-500/20 rounded-full items-center justify-center mb-6">
+                    <Ionicons name="time-outline" size={48} color="#d97706" />
                   </View>
                   <Text className="font-bold text-2xl text-slate-800 mb-2 text-center">Alhamdulillah!</Text>
-                  <Text className="text-slate-600 text-center mb-4 leading-6">
-                    Pendaftaran Anda berhasil disimpan ke database.
+                  <Text className="text-slate-600 text-center mb-6 leading-6 text-sm px-2">
+                    Pendaftaran Anda telah berhasil terkirim ke Pengurus Pusat.
                   </Text>
 
-                  <View style={styles.niaBox}>
-                    <Text style={styles.niaLabel}>Nomor Induk Anggota (NIA) Anda:</Text>
-                    <Text style={styles.niaValue}>{generatedNia}</Text>
+                  <View className="w-full bg-amber-50 border border-amber-200 p-5 rounded-2xl mb-6 space-y-2">
+                    <Text className="text-amber-900 font-bold text-xs uppercase tracking-wider">Status: Menunggu Verifikasi Admin</Text>
+                    <Text className="text-slate-700 text-xs leading-5 mt-1">
+                      Nomor Induk Anggota (NIA) resmi Anda akan diproses oleh Admin Pusat dan dikirimkan langsung melalui pesan WhatsApp ke nomor:
+                    </Text>
+                    <Text className="text-emerald-700 font-mono font-bold text-sm mt-2">{formData.phone}</Text>
                   </View>
 
                   <Text className="text-slate-500 text-center text-xs mb-6 leading-5 px-4">
-                    Gunakan <Text className="font-bold text-slate-700">{formData.nama}</Text> dan NIA di atas untuk melakukan login ke aplikasi.
+                    Setelah menerima pesan WA konfirmasi & Nomor NIA resmi dari Admin Pusat, Anda dapat langsung login ke aplikasi.
                   </Text>
-                  
-                  <TouchableOpacity 
-                    className="w-full bg-emerald-600 p-4 rounded-xl items-center mb-3 flex-row justify-center"
-                    onPress={() =>
-                      openWhatsAppMessageMobile({
-                        phone: formData.phone,
-                        nama: formData.nama,
-                        nia: generatedNia,
-                        statusText: 'Alumni',
-                      })
-                    }
-                  >
-                    <Ionicons name="logo-whatsapp" size={20} color="#ffffff" style={{ marginRight: 8 }} />
-                    <Text className="text-white font-bold text-base">Kirim NIA ke WhatsApp Saya</Text>
-                  </TouchableOpacity>
 
                   <TouchableOpacity 
                     className="w-full bg-slate-900 p-4 rounded-xl items-center"
                     onPress={() => router.replace('/')}
                   >
-                    <Text className="text-white font-bold text-base">Masuk / Login Sekarang</Text>
+                    <Text className="text-white font-bold text-base">Kembali ke Beranda / Login</Text>
                   </TouchableOpacity>
                 </View>
               )}
