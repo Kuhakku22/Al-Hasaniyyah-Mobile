@@ -103,6 +103,18 @@ export default function AdminPortal() {
   const [isSavingBulk, setIsSavingBulk] = useState(false);
   const [bulkSaveMsg, setBulkSaveMsg] = useState("");
 
+  // Helper untuk membaca pendaftar pending dari localStorage / Cross-tab
+  const getPendingLocalRegistrations = (): Alumni[] => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = window.localStorage.getItem("@pending_registrations");
+      if (!raw) return [];
+      return JSON.parse(raw);
+    } catch (e) {
+      return [];
+    }
+  };
+
   // Check login state
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -132,9 +144,11 @@ export default function AdminPortal() {
     sessionStorage.removeItem("adminAuth");
   };
 
-  // Fetch data from Supabase
+  // Fetch data from Supabase + Combined Fast-Response Pending
   const fetchData = async () => {
     setLoading(true);
+    const localPendings = getPendingLocalRegistrations();
+
     try {
       // 1. Fetch Alumni
       const { data: alumniData, error: alumniErr } = await supabase
@@ -143,7 +157,20 @@ export default function AdminPortal() {
         .order("created_at", { ascending: false });
 
       if (alumniErr) throw alumniErr;
-      setAlumni(alumniData || []);
+      
+      const dbList: Alumni[] = alumniData || [];
+      
+      // Gabungkan data DB dengan pendaftar lokal (deduplikasi berdasarkan nomor_hp / ID)
+      const mergedMap = new Map<string, Alumni>();
+      localPendings.forEach((p) => {
+        if (p.nomor_hp) mergedMap.set(p.nomor_hp, p);
+      });
+      dbList.forEach((a) => {
+        if (a.nomor_hp) mergedMap.set(a.nomor_hp, a);
+      });
+
+      const mergedList = Array.from(mergedMap.values());
+      setAlumni(mergedList);
 
       // 2. Fetch Iuran
       const { data: iuranData, error: iuranErr } = await supabase
@@ -190,8 +217,13 @@ export default function AdminPortal() {
         }))
       );
     } catch (e) {
-      console.warn("Menggunakan data tiruan (mock data) karena kegagalan koneksi database:", e);
-      setAlumni(MOCK_ALUMNI);
+      console.warn("Menggunakan data gabungan lokal karena kegagalan koneksi database:", e);
+      
+      const mergedMap = new Map<string, Alumni>();
+      MOCK_ALUMNI.forEach((a) => mergedMap.set(a.nomor_hp || a.id, a));
+      localPendings.forEach((p) => mergedMap.set(p.nomor_hp || p.id, p));
+
+      setAlumni(Array.from(mergedMap.values()));
       setIuran(MOCK_IURAN);
       setInfak(MOCK_INFAK);
       setKonsultasi(MOCK_KONSULTASI);
@@ -200,12 +232,26 @@ export default function AdminPortal() {
     }
   };
 
+  // Realtime BroadcastChannel Listener untuk menangkap pendaftar baru secara seketika (0.01 detik)
   useEffect(() => {
-    if (isLoggedIn) {
-      const timer = setTimeout(() => {
-        fetchData();
-      }, 0);
-      return () => clearTimeout(timer);
+    if (!isLoggedIn) return;
+
+    fetchData();
+
+    if (typeof window !== "undefined" && "BroadcastChannel" in window) {
+      const channel = new BroadcastChannel("alumni_channel");
+      channel.onmessage = (event) => {
+        if (event.data && event.data.type === "NEW_REGISTRATION") {
+          const newReg = event.data.data;
+          setAlumni((prev) => {
+            const filtered = prev.filter((p) => p.nomor_hp !== newReg.nomor_hp);
+            return [newReg, ...filtered];
+          });
+        }
+      };
+      return () => {
+        channel.close();
+      };
     }
   }, [isLoggedIn]);
 
@@ -246,6 +292,16 @@ export default function AdminPortal() {
 
       if (error) throw error;
       
+      // Hapus dari pending lokal jika ada
+      if (typeof window !== "undefined" && phone) {
+        try {
+          const raw = window.localStorage.getItem("@pending_registrations") || "[]";
+          const list: Alumni[] = JSON.parse(raw);
+          const filtered = list.filter((p) => p.nomor_hp !== phone);
+          window.localStorage.setItem("@pending_registrations", JSON.stringify(filtered));
+        } catch (err) {}
+      }
+
       // Auto buka WhatsApp untuk kirim notifikasi NIA ke Alumni
       if (phone) {
         openWhatsAppMessage({ phone, nama, nia: rawNia });
