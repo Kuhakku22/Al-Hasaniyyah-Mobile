@@ -64,7 +64,7 @@ export default function RegisterScreen() {
       const randomDigits = Math.floor(1000 + Math.random() * 9000);
       const tempId = `REG-${cleanPhone.slice(-4) || '0000'}-${randomDigits}`;
 
-      // 1. Kirim pendaftaran ke seluruh endpoint API (Local & Vercel)
+      // 1. Kirim pendaftaran ke seluruh endpoint API (Local, Vercel Admin, & Vercel Mobile)
       const payload = {
         nama: formData.nama,
         phone: formData.phone,
@@ -77,6 +77,8 @@ export default function RegisterScreen() {
       };
 
       const endpoints = [
+        'https://al-hasaniyyah-admin.vercel.app/api/register',
+        'https://al-hasaniyyah-mobile.vercel.app/api/register',
         '/api/register',
         'http://localhost:3000/api/register',
       ];

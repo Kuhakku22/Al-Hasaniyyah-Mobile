@@ -58,11 +58,32 @@ export async function GET() {
     if (data) dbList = data;
   } catch (err) {}
 
+  // Synchronize dengan proyek Vercel Mobile terpisah jika ada
+  let mobileVercelList: any[] = [];
+  try {
+    const res = await fetch("https://al-hasaniyyah-mobile.vercel.app/api/register", {
+      cache: "no-store",
+      headers: { "Cache-Control": "no-cache" },
+    });
+    const json = await res.json();
+    if (json && json.data && Array.isArray(json.data)) {
+      mobileVercelList = json.data;
+    }
+  } catch (e) {}
+
   const fileStored = readStoredRegistrations();
   const mergedList: any[] = [];
   const seenPhones = new Set<string>();
 
-  // 1. Pendaftar baru dari file storage Vercel di urutan PALING ATAS
+  // 1. Pendaftar baru dari Mobile Vercel Project
+  mobileVercelList.forEach((item) => {
+    if (item.nomor_hp && !seenPhones.has(item.nomor_hp)) {
+      seenPhones.add(item.nomor_hp);
+      mergedList.push(item);
+    }
+  });
+
+  // 2. Pendaftar baru dari Admin Vercel File Storage
   fileStored.forEach((item) => {
     if (item.nomor_hp && !seenPhones.has(item.nomor_hp)) {
       seenPhones.add(item.nomor_hp);
@@ -70,7 +91,7 @@ export async function GET() {
     }
   });
 
-  // 2. Data DB Supabase
+  // 3. Data DB Supabase
   dbList.forEach((item) => {
     if (item.nomor_hp && !seenPhones.has(item.nomor_hp)) {
       seenPhones.add(item.nomor_hp);
