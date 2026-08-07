@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { ThemedText } from '@/components/themed-text';
 import { supabase } from '@/lib/supabase';
+import { detectProvinceCode, generateStandardNIA } from '@/lib/nia';
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -41,10 +42,27 @@ export default function RegisterScreen() {
 
     setLoading(true);
     try {
-      // Buat Nomor Induk Anggota (NIA) unik otomatis
-      const cleanPhone = formData.phone.replace(/[^0-9]/g, '');
-      const randomDigits = Math.floor(1000 + Math.random() * 9000);
-      const tempId = `NIA-${cleanPhone.slice(-4) || '0000'}-${randomDigits}`;
+      // Buat Nomor Induk Anggota (NIA) Baku resmi (X.YY.ZZZZ.AAAAA)
+      let sequenceNum = Math.floor(100 + Math.random() * 900);
+      try {
+        const { count } = await supabase.from('alumni').select('*', { count: 'exact', head: true });
+        if (count && count > 0) {
+          sequenceNum = count + 1;
+        }
+      } catch (e) {
+        // Fallback sequence
+      }
+
+      const provDetected = detectProvinceCode(formData.domisili.trim());
+      const niaResult = generateStandardNIA({
+        statusText: 'Alumni',
+        provinceCode: provDetected.code,
+        tahunMasuk: formData.tahunMasuk.trim(),
+        tahunKeluar: formData.tahunKeluar.trim(),
+        sequenceNumber: sequenceNum,
+      });
+
+      const tempId = niaResult.nia;
 
       const { error } = await supabase
         .from('alumni')

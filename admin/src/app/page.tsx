@@ -2,11 +2,25 @@
 
 import React, { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
+import {
+  generateStandardNIA,
+  parseAlumniTextBulk,
+  detectProvinceCode,
+  ParsedAlumniItem,
+  STATUS_CODES,
+} from "../lib/nia";
+
+// Sample text from Word document for instant testing
+const SAMPLE_WORD_TEXT = `1. Ahmad Baidlowi | Alumni | Pasuruan Jawa Timur | 2015 | 2018 | 081299991111
+2. Ustadz Zarkasyi | Masyaikh | Medan Sumatera Utara | 2010 | 2014 | 081299992222
+3. Syarifah Fatimah | Banat | Bandung Jawa Barat | 2021 | 2024 | 081233334444
+4. Ustadz Abdullah | Musaidin | Jakarta Selatan DKI Jakarta | 2005 | 2008 | 081255556666
+5. Habib Ali Assegaf | Ahlu Beit | Surabaya Jawa Timur | 2012 | 2015 | 081277778888`;
 
 // Mock Data Fallbacks
 const MOCK_ALUMNI = [
-  { id: "1", nomor_id_unik: "1023001", nama_lengkap: "Ahmad Baidlowi", angkatan: 2018, alamat_domisili: "Pasuruan", status_verifikasi: "verified", nomor_hp: "081299991111" },
-  { id: "2", nomor_id_unik: "1023002", nama_lengkap: "M. Zarkasyi", angkatan: 2015, alamat_domisili: "Pontianak", status_verifikasi: "verified", nomor_hp: "081299992222" },
+  { id: "1", nomor_id_unik: "3.35.1518.00001", nama_lengkap: "Ahmad Baidlowi", angkatan: 2018, alamat_domisili: "Pasuruan", status_verifikasi: "verified", nomor_hp: "081299991111" },
+  { id: "2", nomor_id_unik: "2.12.1014.00002", nama_lengkap: "M. Zarkasyi", angkatan: 2014, alamat_domisili: "Pontianak", status_verifikasi: "verified", nomor_hp: "081299992222" },
   { id: "3", nomor_id_unik: "REG-08123333-5555", nama_lengkap: "Zainal Arifin", angkatan: 2022, alamat_domisili: "Malang", status_verifikasi: "pending", nomor_hp: "081233334444" },
   { id: "4", nomor_id_unik: "999999", nama_lengkap: "Syihabuddin", angkatan: 2024, alamat_domisili: "Jakarta", status_verifikasi: "rejected", nomor_hp: "081255556666" },
 ];
@@ -35,6 +49,8 @@ interface Alumni {
   alamat_domisili: string | null;
   status_verifikasi: string;
   nomor_hp: string | null;
+  tahun_masuk?: number | null;
+  tahun_keluar?: number | null;
 }
 
 interface Iuran {
@@ -79,6 +95,12 @@ export default function AdminPortal() {
   const [replyText, setReplyText] = useState<Record<string, string>>({});
   const [editingNia, setEditingNia] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+
+  // Bulk Import State
+  const [bulkInput, setBulkInput] = useState("");
+  const [parsedItems, setParsedItems] = useState<ParsedAlumniItem[]>([]);
+  const [isSavingBulk, setIsSavingBulk] = useState(false);
+  const [bulkSaveMsg, setBulkSaveMsg] = useState("");
 
   // Check login state
   useEffect(() => {
@@ -186,11 +208,28 @@ export default function AdminPortal() {
     }
   }, [isLoggedIn]);
 
+  // Generate Auto NIA Baku (X.YY.ZZZZ.AAAAA) untuk Alumni Pending
+  const handleAutoGenerateNiaSingle = (item: Alumni, index: number) => {
+    const seq = (alumni.length || 0) + index + 1;
+    const tahunMasuk = item.tahun_masuk || item.angkatan || 2018;
+    const tahunKeluar = item.tahun_keluar || (item.angkatan ? item.angkatan + 3 : 2021);
+    
+    const result = generateStandardNIA({
+      statusText: "Alumni",
+      domisiliText: item.alamat_domisili || "Jawa Timur",
+      tahunMasuk,
+      tahunKeluar,
+      sequenceNumber: seq,
+    });
+
+    setEditingNia((prev) => ({ ...prev, [item.id]: result.nia }));
+  };
+
   // Action: Approve Alumni
   const handleApproveAlumni = async (id: string, phone?: string | null) => {
     const rawNia = editingNia[id] || "";
     if (!rawNia.trim()) {
-      alert("Silakan masukkan Nomor Induk Anggota (NIA) terlebih dahulu.");
+      alert("Silakan masukkan Nomor Induk Anggota (NIA) atau klik '⚡ Auto NIA (AI)' terlebih dahulu.");
       return;
     }
 
@@ -275,6 +314,69 @@ export default function AdminPortal() {
     }
   };
 
+  // Handler: Process Bulk Input with AI Parser
+  const handleProcessBulkInput = () => {
+    if (!bulkInput.trim()) {
+      alert("Silakan masukkan teks mentah data alumni dari dokumen Word atau file CSV terlebih dahulu.");
+      return;
+    }
+
+    const startSeq = (alumni.length || 0) + 1;
+    const parsed = parseAlumniTextBulk(bulkInput, startSeq);
+    setParsedItems(parsed);
+    setBulkSaveMsg("");
+  };
+
+  // Handler: Save Parsed Bulk Alumni to Supabase
+  const handleSaveBulkToSupabase = async () => {
+    if (parsedItems.length === 0) return;
+
+    setIsSavingBulk(true);
+    setBulkSaveMsg("Menyimpan seluruh data alumni ke database Supabase...");
+
+    try {
+      const payload = parsedItems.map((item) => ({
+        nama_lengkap: item.nama_lengkap,
+        nomor_id_unik: item.generated_nia,
+        alamat_domisili: item.alamat_domisili,
+        angkatan: item.tahun_keluar,
+        nomor_hp: item.nomor_hp,
+        status_verifikasi: "verified",
+        created_at: new Date().toISOString(),
+      }));
+
+      const { error } = await supabase.from("alumni").insert(payload);
+
+      if (error) throw error;
+
+      setBulkSaveMsg(`Sukses! ${parsedItems.length} data alumni berhasil disimpan ke database Supabase.`);
+      alert(`Berhasil menyimpan ${parsedItems.length} alumni!`);
+      setParsedItems([]);
+      setBulkInput("");
+      fetchData();
+    } catch (err: any) {
+      console.warn("Gagal menyimpan ke database Supabase, mengaktifkan mode demo lokal:", err);
+      // Demo fallback update
+      const newMockItems: Alumni[] = parsedItems.map((item, idx) => ({
+        id: `bulk-${Date.now()}-${idx}`,
+        nama_lengkap: item.nama_lengkap,
+        nomor_id_unik: item.generated_nia,
+        alamat_domisili: item.alamat_domisili,
+        angkatan: item.tahun_keluar,
+        nomor_hp: item.nomor_hp,
+        status_verifikasi: "verified",
+      }));
+
+      setAlumni((prev) => [...newMockItems, ...prev]);
+      setBulkSaveMsg(`Mode Demo: ${parsedItems.length} data alumni ditambahkan secara lokal.`);
+      alert(`Mode Demo: ${parsedItems.length} alumni berhasil ditambahkan!`);
+      setParsedItems([]);
+      setBulkInput("");
+    } finally {
+      setIsSavingBulk(false);
+    }
+  };
+
   // UI: Login Screen
   if (!isLoggedIn) {
     return (
@@ -347,7 +449,7 @@ export default function AdminPortal() {
         <div className="flex items-center gap-4">
           <div className="hidden md:flex flex-col items-end">
             <span className="text-xs text-white font-bold">Super Admin</span>
-            <span className="text-[10px] text-emerald-400">Pusat Dalwa Raci</span>
+            <span className="text-[10px] text-emerald-400">Pusat Dakwa Raci</span>
           </div>
           <button
             onClick={handleLogout}
@@ -368,7 +470,7 @@ export default function AdminPortal() {
           <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
           <div>
             <h2 className="text-2xl font-black text-white">Ahlan wa Sahlan, Admin!</h2>
-            <p className="text-emerald-300 text-xs mt-1">Kelola data pendaftaran alumni baru, pantau iuran bulanan, serta tanggapi saran/masukan.</p>
+            <p className="text-emerald-300 text-xs mt-1">Kelola data pendaftaran alumni baru, masukan data Word massal dengan Generator NIA Baku AI.</p>
           </div>
           <button
             onClick={fetchData}
@@ -411,9 +513,10 @@ export default function AdminPortal() {
         </div>
 
         {/* Tab Controls */}
-        <div className="flex bg-slate-900 p-1.5 rounded-xl border border-slate-800 max-w-2xl">
+        <div className="flex bg-slate-900 p-1.5 rounded-xl border border-slate-800 max-w-3xl overflow-x-auto">
           {[
             { id: "verifikasi", label: "Verifikasi Pendaftaran", badge: pendingCount },
+            { id: "bulk_import", label: "✨ Import Bulk & Gen NIA AI" },
             { id: "iuran", label: "Iuran Wajib" },
             { id: "infak", label: "Infak Alumni" },
             { id: "konsultasi", label: "Konsultasi & Masukan", badge: konsultasi.filter((c) => c.status === "Menunggu Tanggapan").length },
@@ -421,7 +524,7 @@ export default function AdminPortal() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all relative ${
+              className={`flex-1 py-2 px-3.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap relative ${
                 activeTab === tab.id
                   ? "bg-emerald-800 text-white shadow-md shadow-emerald-950/20"
                   : "text-slate-400 hover:text-white hover:bg-slate-800/50"
@@ -450,7 +553,10 @@ export default function AdminPortal() {
               {activeTab === "verifikasi" && (
                 <div className="space-y-4">
                   <div className="flex justify-between items-center pb-4 border-b border-slate-800">
-                    <h4 className="text-base font-black text-white">Verifikasi Pendaftaran Alumni Baru</h4>
+                    <div>
+                      <h4 className="text-base font-black text-white">Verifikasi Pendaftaran Alumni Baru</h4>
+                      <p className="text-slate-400 text-[11px] mt-0.5">Gunakan tombol &quot;⚡ Auto NIA (AI)&quot; untuk membuat NIA baku otomatis (X.YY.ZZZZ.AAAAA).</p>
+                    </div>
                     <span className="bg-amber-500/10 border border-amber-500/20 text-amber-500 px-3 py-1 rounded-full text-[10px] font-bold">
                       {alumni.filter((a) => a.status_verifikasi === "pending").length} menunggu verifikasi
                     </span>
@@ -465,14 +571,14 @@ export default function AdminPortal() {
                           <th className="py-3 px-4">Domisili</th>
                           <th className="py-3 px-4">Nomor WA</th>
                           <th className="py-3 px-4">ID Registrasi</th>
-                          <th className="py-3 px-4 text-center">Tindakan Persetujuan</th>
+                          <th className="py-3 px-4 text-center">Tindakan Persetujuan & NIA Baku</th>
                         </tr>
                       </thead>
                       <tbody>
                         {alumni.filter((a) => a.status_verifikasi === "pending").length > 0 ? (
                           alumni
                             .filter((a) => a.status_verifikasi === "pending")
-                            .map((a) => (
+                            .map((a, idx) => (
                               <tr key={a.id} className="border-b border-slate-800/50 hover:bg-slate-800/30">
                                 <td className="py-3 px-4 font-bold text-white">{a.nama_lengkap}</td>
                                 <td className="py-3 px-4 text-slate-300">{a.angkatan || "-"}</td>
@@ -480,25 +586,32 @@ export default function AdminPortal() {
                                 <td className="py-3 px-4 font-mono text-slate-300">{a.nomor_hp || "-"}</td>
                                 <td className="py-3 px-4 text-slate-500 text-[10px] font-mono">{a.nomor_id_unik}</td>
                                 <td className="py-3 px-4">
-                                  <div className="flex items-center justify-center gap-3">
+                                  <div className="flex items-center justify-center gap-2">
                                     <input
                                       type="text"
-                                      placeholder="Ketik NIA baru..."
+                                      placeholder="Nomor NIA Baku..."
                                       value={editingNia[a.id] || ""}
                                       onChange={(e) =>
                                         setEditingNia((prev) => ({ ...prev, [a.id]: e.target.value }))
                                       }
-                                      className="bg-slate-950 border border-slate-800 py-1 px-2.5 rounded-lg text-white text-[11px] focus:outline-none focus:border-emerald-500 w-32"
+                                      className="bg-slate-950 border border-slate-800 py-1.5 px-2.5 rounded-lg text-amber-400 font-mono text-[11px] focus:outline-none focus:border-amber-500 w-36"
                                     />
                                     <button
+                                      onClick={() => handleAutoGenerateNiaSingle(a, idx)}
+                                      className="bg-amber-500/20 border border-amber-500/40 text-amber-400 px-2.5 py-1.5 rounded-lg text-[10px] font-bold hover:bg-amber-500 hover:text-slate-950 transition-all whitespace-nowrap"
+                                      title="Generate NIA Baku Otomatis Format X.YY.ZZZZ.AAAAA"
+                                    >
+                                      ⚡ Auto NIA (AI)
+                                    </button>
+                                    <button
                                       onClick={() => handleApproveAlumni(a.id, a.nomor_hp)}
-                                      className="bg-emerald-600 text-white px-3 py-1 rounded-lg text-[10px] font-bold hover:bg-emerald-500 transition-colors"
+                                      className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold hover:bg-emerald-500 transition-colors"
                                     >
                                       Setujui
                                     </button>
                                     <button
                                       onClick={() => handleRejectAlumni(a.id)}
-                                      className="bg-red-500/10 border border-red-500/20 text-red-400 px-3 py-1 rounded-lg text-[10px] font-bold hover:bg-red-600 hover:text-white transition-colors"
+                                      className="bg-red-500/10 border border-red-500/20 text-red-400 px-3 py-1.5 rounded-lg text-[10px] font-bold hover:bg-red-600 hover:text-white transition-colors"
                                     >
                                       Tolak
                                     </button>
@@ -519,11 +632,162 @@ export default function AdminPortal() {
                 </div>
               )}
 
-              {/* TAB 2: IURAN WAJIB */}
+              {/* TAB 2: IMPORT BULK & GEN NIA AI */}
+              {activeTab === "bulk_import" && (
+                <div className="space-y-6">
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center pb-4 border-b border-slate-800 gap-3">
+                    <div>
+                      <h4 className="text-base font-black text-white flex items-center gap-2">
+                        <span>✨ Import Bulk Data Alumni & AI Generator NIA Baku</span>
+                      </h4>
+                      <p className="text-slate-400 text-xs mt-1">
+                        Salin teks langsung dari dokumen Word/CSV. Sistem AI akan mengurai bidang data dan menghasilkan NIA baku resmi <span className="font-mono text-amber-400 font-bold">X.YY.ZZZZ.AAAAA</span>.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setBulkInput(SAMPLE_WORD_TEXT)}
+                      className="bg-slate-800 border border-slate-700 hover:border-amber-500 text-amber-400 text-[11px] font-bold px-3 py-1.5 rounded-xl transition-all"
+                    >
+                      📋 Gunakan Contoh Teks Word
+                    </button>
+                  </div>
+
+                  {/* Format Rule Infobox */}
+                  <div className="bg-slate-950/80 p-4 rounded-2xl border border-emerald-900/50 grid grid-cols-1 md:grid-cols-4 gap-3 text-[11px]">
+                    <div className="p-2.5 bg-slate-900 rounded-xl border border-slate-800">
+                      <span className="text-amber-400 font-bold block">X = Status Anggota</span>
+                      <span className="text-slate-400">1: Ahlu Beit, 2: Masyaikh, 3: Alumni, 4: Musaidin, 5: Banat</span>
+                    </div>
+                    <div className="p-2.5 bg-slate-900 rounded-xl border border-slate-800">
+                      <span className="text-amber-400 font-bold block">YY = Kode Provinsi BPS</span>
+                      <span className="text-slate-400">35: Jatim, 32: Jabar, 31: DKI, 12: Sumut, dll.</span>
+                    </div>
+                    <div className="p-2.5 bg-slate-900 rounded-xl border border-slate-800">
+                      <span className="text-amber-400 font-bold block">ZZZZ = Thn Masuk & Keluar</span>
+                      <span className="text-slate-400">2 Digit Masuk + 2 Digit Keluar (Contoh: 1518)</span>
+                    </div>
+                    <div className="p-2.5 bg-slate-900 rounded-xl border border-slate-800">
+                      <span className="text-amber-400 font-bold block">AAAAA = No Urut (5 Digit)</span>
+                      <span className="text-slate-400">Urutan otomatis 00001 s.d. 99999</span>
+                    </div>
+                  </div>
+
+                  {/* Input Text Area */}
+                  <div className="space-y-3">
+                    <label className="block text-xs font-bold text-slate-300">
+                      Tempelkan (Paste) Teks Dokumen Word / File CSV Di Sini:
+                    </label>
+                    <textarea
+                      rows={6}
+                      placeholder={`Contoh baris teks dokumen Word:\n1. Ahmad Baidlowi | Alumni | Pasuruan Jawa Timur | 2015 | 2018 | 081299991111\n2. Ustadz Zarkasyi | Masyaikh | Medan Sumatera Utara | 2010 | 2014 | 081299992222`}
+                      value={bulkInput}
+                      onChange={(e) => setBulkInput(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 p-4 rounded-2xl text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-amber-500 leading-relaxed"
+                    />
+
+                    <div className="flex justify-between items-center">
+                      <span className="text-[11px] text-slate-500">
+                        {bulkInput.split("\n").filter((l) => l.trim()).length} baris teks terdeteksi
+                      </span>
+                      <button
+                        onClick={handleProcessBulkInput}
+                        className="bg-gradient-to-r from-emerald-600 to-emerald-700 text-white font-bold text-xs px-6 py-2.5 rounded-xl hover:opacity-90 transition-all shadow-lg shadow-emerald-950/40 flex items-center gap-2"
+                      >
+                        <svg className="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                        PROSES AI PARSER & GENERATE NIA
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Preview Table Results */}
+                  {parsedItems.length > 0 && (
+                    <div className="space-y-4 pt-4 border-t border-slate-800">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-emerald-950/30 p-4 rounded-2xl border border-emerald-800/40">
+                        <div>
+                          <h5 className="font-bold text-white text-sm">Hasil Penguraian & Generator NIA ({parsedItems.length} Alumni)</h5>
+                          <p className="text-emerald-400 text-xs mt-0.5">Periksa tabel di bawah ini sebelum disimpan secara resmi ke database Supabase.</p>
+                        </div>
+                        <button
+                          onClick={handleSaveBulkToSupabase}
+                          disabled={isSavingBulk}
+                          className="bg-amber-500 text-slate-950 font-black text-xs px-5 py-2.5 rounded-xl hover:bg-amber-400 transition-all shadow-lg shadow-amber-500/20 whitespace-nowrap"
+                        >
+                          {isSavingBulk ? "MENYIMPAN..." : "SIMPAN SEMUA KE DATABASE"}
+                        </button>
+                      </div>
+
+                      {bulkSaveMsg && (
+                        <div className="p-3 bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs rounded-xl font-semibold">
+                          {bulkSaveMsg}
+                        </div>
+                      )}
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="text-slate-400 border-b border-slate-800">
+                              <th className="py-3 px-3">No</th>
+                              <th className="py-3 px-4">Nama Lengkap</th>
+                              <th className="py-3 px-4">Status</th>
+                              <th className="py-3 px-4">Domisili / Alamat</th>
+                              <th className="py-3 px-3">Provinsi BPS</th>
+                              <th className="py-3 px-3">Tahun</th>
+                              <th className="py-3 px-4">Nomor WA</th>
+                              <th className="py-3 px-4">Nomor Induk Anggota (NIA Hasil Generator)</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {parsedItems.map((item, idx) => (
+                              <tr key={item.idTemp} className="border-b border-slate-800/50 hover:bg-slate-800/30">
+                                <td className="py-3 px-3 font-mono text-slate-500">{idx + 1}</td>
+                                <td className="py-3 px-4 font-bold text-white">
+                                  <input
+                                    type="text"
+                                    value={item.nama_lengkap}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      setParsedItems((prev) =>
+                                        prev.map((p) => (p.idTemp === item.idTemp ? { ...p, nama_lengkap: val } : p))
+                                      );
+                                    }}
+                                    className="bg-transparent border-b border-slate-700 text-white font-bold text-xs focus:outline-none focus:border-emerald-500 w-full"
+                                  />
+                                </td>
+                                <td className="py-3 px-4">
+                                  <span className="bg-slate-800 border border-slate-700 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded">
+                                    {item.status_anggota}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-4 text-slate-300">{item.alamat_domisili}</td>
+                                <td className="py-3 px-3">
+                                  <span className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono font-bold px-2 py-0.5 rounded">
+                                    {item.kode_provinsi} - {item.nama_provinsi}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-3 font-mono text-slate-300">{item.tahun_masuk} - {item.tahun_keluar}</td>
+                                <td className="py-3 px-4 font-mono text-slate-400">{item.nomor_hp}</td>
+                                <td className="py-3 px-4">
+                                  <span className="bg-amber-500/10 border border-amber-500/30 text-amber-400 font-mono font-bold px-3 py-1 rounded-lg text-xs tracking-wider">
+                                    {item.generated_nia}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 3: IURAN WAJIB */}
               {activeTab === "iuran" && (
                 <div className="space-y-4">
                   <div className="flex justify-between items-center pb-4 border-b border-slate-800">
-                    <h4 className="text-base font-black text-white">Laporan & Pengumpulan Iuran Wajib</h4>
+                    <h4 className="text-base font-black text-white">Laporan & Pengumpulkan Iuran Wajib</h4>
                     <span className="text-emerald-400 font-bold text-xs">Target: Rp 25.000 / Bulan</span>
                   </div>
 
@@ -576,7 +840,7 @@ export default function AdminPortal() {
                 </div>
               )}
 
-              {/* TAB 3: INFAK ALUMNI */}
+              {/* TAB 4: INFAK ALUMNI */}
               {activeTab === "infak" && (
                 <div className="space-y-4">
                   <div className="flex justify-between items-center pb-4 border-b border-slate-800">
@@ -608,9 +872,9 @@ export default function AdminPortal() {
                                 </span>
                               </td>
                               <td className="py-3 px-4 font-mono font-bold text-emerald-400">Rp {(Number(inf.nominal) || 0).toLocaleString("id-ID")}</td>
-                               <td className="py-3 px-4 text-slate-300 italic font-medium">
-                                 &quot;{inf.pesan || "Tanpa pesan"}&quot;
-                               </td>
+                              <td className="py-3 px-4 text-slate-300 italic font-medium">
+                                &quot;{inf.pesan || "Tanpa pesan"}&quot;
+                              </td>
                               <td className="py-3 px-4 text-slate-400">
                                 {inf.paid_at ? new Date(inf.paid_at).toLocaleString("id-ID") : "-"}
                               </td>
@@ -629,7 +893,7 @@ export default function AdminPortal() {
                 </div>
               )}
 
-              {/* TAB 4: KONSULTASI & MASUKAN */}
+              {/* TAB 5: KONSULTASI & MASUKAN */}
               {activeTab === "konsultasi" && (
                 <div className="space-y-4">
                   <div className="flex justify-between items-center pb-4 border-b border-slate-800">
