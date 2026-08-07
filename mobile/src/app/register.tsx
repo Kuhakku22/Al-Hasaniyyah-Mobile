@@ -84,6 +84,47 @@ export default function RegisterScreen() {
 
       Promise.race([dbPromise, timeoutPromise]).catch(() => {});
 
+      // Simpan ke localStorage & BroadcastChannel agar Portal Admin langsung menangkap pendaftar baru ini secara instan
+      if (typeof window !== 'undefined') {
+        try {
+          const pendingKey = '@pending_registrations';
+          const existingStr = window.localStorage.getItem(pendingKey);
+          let existing = [];
+          if (existingStr && existingStr.trim()) {
+            try {
+              existing = JSON.parse(existingStr);
+            } catch (err) {
+              existing = [];
+            }
+          }
+          const newItem = {
+            id: `reg-${Date.now()}`,
+            nama_lengkap: formData.nama.trim(),
+            tempat_tanggal_lahir: formData.tempatTanggalLahir.trim(),
+            alamat_ktp: formData.alamatKtp.trim(),
+            alamat_domisili: formData.domisili.trim(),
+            tahun_masuk: parseInt(formData.tahunMasuk) || null,
+            tahun_keluar: parseInt(formData.tahunKeluar) || null,
+            tahun_lulus: parseInt(formData.tahunLulus) || null,
+            angkatan: parseInt(formData.tahunLulus) || null,
+            nomor_hp: formData.phone.trim(),
+            nomor_id_unik: tempId,
+            status_verifikasi: 'pending',
+            created_at: new Date().toISOString(),
+          };
+          existing.unshift(newItem);
+          window.localStorage.setItem(pendingKey, JSON.stringify(existing));
+
+          if ('BroadcastChannel' in window) {
+            const channel = new BroadcastChannel('alumni_channel');
+            channel.postMessage({ type: 'NEW_REGISTRATION', data: newItem });
+            channel.close();
+          }
+        } catch (err) {
+          // Storage fallback
+        }
+      }
+
       setGeneratedNia(tempId);
       setIsSuccess(true);
     } catch (e: any) {

@@ -5,9 +5,7 @@ import { supabase } from "../lib/supabase";
 import {
   generateStandardNIA,
   parseAlumniTextBulk,
-  detectProvinceCode,
   ParsedAlumniItem,
-  STATUS_CODES,
 } from "../lib/nia";
 import { openWhatsAppMessage } from "../lib/whatsapp";
 
@@ -83,6 +81,16 @@ interface Konsultasi {
   created_at: string;
 }
 
+// Helper parsing JSON aman dari SyntaxError
+const safeJsonParse = <T,>(str: string | null, fallback: T): T => {
+  if (!str || !str.trim()) return fallback;
+  try {
+    return JSON.parse(str) as T;
+  } catch (e) {
+    return fallback;
+  }
+};
+
 export default function AdminPortal() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [password, setPassword] = useState("");
@@ -106,13 +114,8 @@ export default function AdminPortal() {
   // Helper untuk membaca pendaftar pending dari localStorage / Cross-tab
   const getPendingLocalRegistrations = (): Alumni[] => {
     if (typeof window === "undefined") return [];
-    try {
-      const raw = window.localStorage.getItem("@pending_registrations");
-      if (!raw) return [];
-      return JSON.parse(raw);
-    } catch (e) {
-      return [];
-    }
+    const raw = window.localStorage.getItem("@pending_registrations");
+    return safeJsonParse<Alumni[]>(raw, []);
   };
 
   // Check login state
@@ -295,8 +298,8 @@ export default function AdminPortal() {
       // Hapus dari pending lokal jika ada
       if (typeof window !== "undefined" && phone) {
         try {
-          const raw = window.localStorage.getItem("@pending_registrations") || "[]";
-          const list: Alumni[] = JSON.parse(raw);
+          const raw = window.localStorage.getItem("@pending_registrations");
+          const list = safeJsonParse<Alumni[]>(raw, []);
           const filtered = list.filter((p) => p.nomor_hp !== phone);
           window.localStorage.setItem("@pending_registrations", JSON.stringify(filtered));
         } catch (err) {}
@@ -1031,7 +1034,7 @@ export default function AdminPortal() {
                             <div className="bg-emerald-950/20 p-4 rounded-xl border border-emerald-900/40 text-xs text-slate-300 space-y-1">
                               <div className="flex items-center gap-1 text-emerald-400 font-bold mb-1">
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                                 </svg>
                                 Tanggapan Admin Pusat:
                               </div>

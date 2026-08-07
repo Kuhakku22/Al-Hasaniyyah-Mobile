@@ -81,6 +81,16 @@ interface Konsultasi {
   created_at: string;
 }
 
+// Helper parsing JSON aman dari SyntaxError
+const safeJsonParse = <T,>(str: string | null, fallback: T): T => {
+  if (!str || !str.trim()) return fallback;
+  try {
+    return JSON.parse(str) as T;
+  } catch (e) {
+    return fallback;
+  }
+};
+
 export default function AdminPortal() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [password, setPassword] = useState("");
@@ -104,13 +114,8 @@ export default function AdminPortal() {
   // Helper untuk membaca pendaftar pending dari localStorage / Cross-tab
   const getPendingLocalRegistrations = (): Alumni[] => {
     if (typeof window === "undefined") return [];
-    try {
-      const raw = window.localStorage.getItem("@pending_registrations");
-      if (!raw) return [];
-      return JSON.parse(raw);
-    } catch (e) {
-      return [];
-    }
+    const raw = window.localStorage.getItem("@pending_registrations");
+    return safeJsonParse<Alumni[]>(raw, []);
   };
 
   // Check login state
@@ -225,7 +230,7 @@ export default function AdminPortal() {
       setIuran(MOCK_IURAN);
       setInfak(MOCK_INFAK);
       setKonsultasi(MOCK_KONSULTASI);
-    } finally {
+    } fontally {
       setLoading(false);
     }
   };
@@ -293,8 +298,8 @@ export default function AdminPortal() {
       // Hapus dari pending lokal jika ada
       if (typeof window !== "undefined" && phone) {
         try {
-          const raw = window.localStorage.getItem("@pending_registrations") || "[]";
-          const list: Alumni[] = JSON.parse(raw);
+          const raw = window.localStorage.getItem("@pending_registrations");
+          const list = safeJsonParse<Alumni[]>(raw, []);
           const filtered = list.filter((p) => p.nomor_hp !== phone);
           window.localStorage.setItem("@pending_registrations", JSON.stringify(filtered));
         } catch (err) {}
