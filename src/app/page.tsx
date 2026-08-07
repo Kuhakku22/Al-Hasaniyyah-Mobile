@@ -203,7 +203,7 @@ export default function AdminPortal() {
       setKonsultasi(MOCK_KONSULTASI);
     } catch (e) {
       console.warn("Error fetching admin data:", e);
-    } fontally {
+    } finally {
       setLoading(false);
     }
   };
