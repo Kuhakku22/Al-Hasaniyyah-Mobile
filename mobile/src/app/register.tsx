@@ -14,6 +14,7 @@ export default function RegisterScreen() {
   const [loading, setLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [generatedNia, setGeneratedNia] = useState('');
 
   const [formData, setFormData] = useState({
     nama: '',
