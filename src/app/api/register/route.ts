@@ -1,8 +1,41 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import fs from "fs";
+import path from "path";
 
-// Global memory store
-const pendingRegistrations: any[] = [];
+const TMP_FILE = path.join(process.cwd(), ".next", "pending_registrations.json");
+const VERCEL_TMP_FILE = "/tmp/pending_registrations.json";
+
+function getFilePath() {
+  try {
+    if (fs.existsSync("/tmp")) return VERCEL_TMP_FILE;
+  } catch (e) {}
+  return TMP_FILE;
+}
+
+function readStoredRegistrations(): any[] {
+  try {
+    const filePath = getFilePath();
+    if (fs.existsSync(filePath)) {
+      const content = fs.readFileSync(filePath, "utf-8");
+      if (content && content.trim()) {
+        return JSON.parse(content);
+      }
+    }
+  } catch (e) {}
+  return [];
+}
+
+function saveStoredRegistrations(data: any[]) {
+  try {
+    const filePath = getFilePath();
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(filePath, JSON.stringify(data.slice(0, 100)), "utf-8");
+  } catch (e) {}
+}
 
 // Header CORS Universal
 const corsHeaders = {
@@ -25,18 +58,19 @@ export async function GET() {
     if (data) dbList = data;
   } catch (err) {}
 
+  const fileStored = readStoredRegistrations();
   const mergedList: any[] = [];
   const seenPhones = new Set<string>();
 
-  // 1. Pendaftar baru dari memori API di urutan PALING ATAS
-  pendingRegistrations.forEach((item) => {
+  // 1. Pendaftar baru dari file storage Vercel di urutan PALING ATAS
+  fileStored.forEach((item) => {
     if (item.nomor_hp && !seenPhones.has(item.nomor_hp)) {
       seenPhones.add(item.nomor_hp);
       mergedList.push(item);
     }
   });
 
-  // 2. Data DB
+  // 2. Data DB Supabase
   dbList.forEach((item) => {
     if (item.nomor_hp && !seenPhones.has(item.nomor_hp)) {
       seenPhones.add(item.nomor_hp);
@@ -69,8 +103,10 @@ export async function POST(request: Request) {
       created_at: new Date().toISOString(),
     };
 
-    // Unshift ke memori lokal agar menjadi yang PALING ATAS
-    pendingRegistrations.unshift(newRecord);
+    // Simpan ke file storage Vercel serverless
+    const current = readStoredRegistrations();
+    current.unshift(newRecord);
+    saveStoredRegistrations(current);
 
     // Simpan ke Supabase di background
     try {

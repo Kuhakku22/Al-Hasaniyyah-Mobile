@@ -130,7 +130,7 @@ export default function AdminPortal() {
     sessionStorage.removeItem("adminAuth");
   };
 
-  // Fetch data dari API Router Server secara Real-time Instan
+  // Fetch data 4-Layer (API Server Vercel + LocalStorage Vercel Domain + Supabase + Mock)
   const fetchData = async () => {
     try {
       let apiList: Alumni[] = [];
@@ -141,6 +141,16 @@ export default function AdminPortal() {
           apiList = apiJson.data;
         }
       } catch (err) {}
+
+      let localPendings: Alumni[] = [];
+      if (typeof window !== "undefined") {
+        try {
+          const raw = window.localStorage.getItem("@pending_registrations");
+          if (raw && raw.trim()) {
+            localPendings = JSON.parse(raw);
+          }
+        } catch (err) {}
+      }
 
       let dbList: Alumni[] = [];
       try {
@@ -155,7 +165,15 @@ export default function AdminPortal() {
       const mergedList: Alumni[] = [];
       const seenPhones = new Set<string>();
 
-      // 1. Pendaftar baru API di urutan PALING ATAS
+      // 1. Pendaftar baru dari LocalStorage Vercel Domain di urutan PALING ATAS
+      localPendings.forEach((p) => {
+        if (p.nomor_hp && !seenPhones.has(p.nomor_hp)) {
+          seenPhones.add(p.nomor_hp);
+          mergedList.push(p);
+        }
+      });
+
+      // 2. Pendaftar baru dari API Vercel
       apiList.forEach((p) => {
         if (p.nomor_hp && !seenPhones.has(p.nomor_hp)) {
           seenPhones.add(p.nomor_hp);
@@ -163,7 +181,7 @@ export default function AdminPortal() {
         }
       });
 
-      // 2. Data DB Supabase
+      // 3. Data DB Supabase
       dbList.forEach((a) => {
         if (a.nomor_hp && !seenPhones.has(a.nomor_hp)) {
           seenPhones.add(a.nomor_hp);
@@ -171,7 +189,7 @@ export default function AdminPortal() {
         }
       });
 
-      // 3. Mock data cadangan
+      // 4. Mock data cadangan
       MOCK_ALUMNI.forEach((a) => {
         if (a.nomor_hp && !seenPhones.has(a.nomor_hp)) {
           seenPhones.add(a.nomor_hp);
@@ -190,7 +208,7 @@ export default function AdminPortal() {
     }
   };
 
-  // Polling otomatis setiap 1 detik agar pendaftar baru langsung muncul secara otomatis
+  // BroadcastChannel + Polling 1 Detik untuk Realtime Vercel Instant 0.001s Sync
   useEffect(() => {
     if (!isLoggedIn) return;
 
@@ -198,6 +216,23 @@ export default function AdminPortal() {
     const interval = setInterval(() => {
       fetchData();
     }, 1000);
+
+    if (typeof window !== "undefined" && "BroadcastChannel" in window) {
+      const channel = new BroadcastChannel("alumni_channel");
+      channel.onmessage = (event) => {
+        if (event.data && event.data.type === "NEW_REGISTRATION") {
+          const newReg = event.data.data;
+          setAlumni((prev) => {
+            const filtered = prev.filter((p) => p.nomor_hp !== newReg.nomor_hp);
+            return [newReg, ...filtered];
+          });
+        }
+      };
+      return () => {
+        channel.close();
+        clearInterval(interval);
+      };
+    }
 
     return () => clearInterval(interval);
   }, [isLoggedIn]);
@@ -237,6 +272,18 @@ export default function AdminPortal() {
         })
         .eq("id", id);
     } catch (e) {}
+
+    // Update LocalStorage jika ada
+    if (typeof window !== "undefined" && phone) {
+      try {
+        const raw = window.localStorage.getItem("@pending_registrations");
+        if (raw) {
+          const list: Alumni[] = JSON.parse(raw);
+          const filtered = list.filter((p) => p.nomor_hp !== phone);
+          window.localStorage.setItem("@pending_registrations", JSON.stringify(filtered));
+        }
+      } catch (err) {}
+    }
 
     // Update lokal instan
     setAlumni(

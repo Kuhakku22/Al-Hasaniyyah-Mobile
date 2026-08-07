@@ -64,10 +64,21 @@ export default function RegisterScreen() {
       const randomDigits = Math.floor(1000 + Math.random() * 9000);
       const tempId = `REG-${cleanPhone.slice(-4) || '0000'}-${randomDigits}`;
 
-      // 1. Kirim pendaftaran ke API Server (Lintas Port 8081 -> 3000 & Vercel)
+      // 1. Kirim pendaftaran ke API Server Vercel
       const apiEndpoint = Platform.OS === 'web' && typeof window !== 'undefined'
         ? (window.location.origin.includes(':8081') ? 'http://localhost:3000/api/register' : '/api/register')
-        : 'http://localhost:3000/api/register';
+        : '/api/register';
+
+      const newItem = {
+        id: `reg-${Date.now()}-${randomDigits}`,
+        nama_lengkap: formData.nama.trim(),
+        alamat_domisili: formData.domisili.trim(),
+        angkatan: parseInt(formData.tahunLulus) || 2024,
+        nomor_hp: formData.phone.trim(),
+        nomor_id_unik: tempId,
+        status_verifikasi: 'pending',
+        created_at: new Date().toISOString(),
+      };
 
       try {
         await fetch(apiEndpoint, {
@@ -88,7 +99,31 @@ export default function RegisterScreen() {
         console.warn('API Register fetch fallback:', apiErr);
       }
 
-      // 2. Simpan juga ke Supabase di background
+      // 2. Simpan ke LocalStorage & BroadcastChannel Vercel (Persistens Cepat di Vercel Domain)
+      if (typeof window !== 'undefined') {
+        try {
+          const pendingKey = '@pending_registrations';
+          const existingStr = window.localStorage.getItem(pendingKey);
+          let existing = [];
+          if (existingStr && existingStr.trim()) {
+            try {
+              existing = JSON.parse(existingStr);
+            } catch (err) {
+              existing = [];
+            }
+          }
+          existing.unshift(newItem);
+          window.localStorage.setItem(pendingKey, JSON.stringify(existing));
+
+          if ('BroadcastChannel' in window) {
+            const channel = new BroadcastChannel('alumni_channel');
+            channel.postMessage({ type: 'NEW_REGISTRATION', data: newItem });
+            channel.close();
+          }
+        } catch (storageErr) {}
+      }
+
+      // 3. Simpan ke Supabase di background
       const insertPayload = {
         nama_lengkap: formData.nama.trim(),
         alamat_domisili: formData.domisili.trim(),
