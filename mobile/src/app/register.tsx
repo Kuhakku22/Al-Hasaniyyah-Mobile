@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ThemedText } from '@/components/themed-text';
 import { supabase } from '@/lib/supabase';
 import { detectProvinceCode, generateStandardNIA } from '@/lib/nia';
+import { openWhatsAppMessageMobile } from '@/lib/whatsapp';
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -261,12 +262,27 @@ export default function RegisterScreen() {
                     <Text style={styles.niaValue}>{generatedNia}</Text>
                   </View>
 
-                  <Text className="text-slate-500 text-center text-xs mb-8 leading-5 px-4">
+                  <Text className="text-slate-500 text-center text-xs mb-6 leading-5 px-4">
                     Gunakan <Text className="font-bold text-slate-700">{formData.nama}</Text> dan NIA di atas untuk melakukan login ke aplikasi.
                   </Text>
                   
                   <TouchableOpacity 
-                    className="w-full bg-emerald-600 p-4 rounded-xl items-center"
+                    className="w-full bg-emerald-600 p-4 rounded-xl items-center mb-3 flex-row justify-center"
+                    onPress={() =>
+                      openWhatsAppMessageMobile({
+                        phone: formData.phone,
+                        nama: formData.nama,
+                        nia: generatedNia,
+                        statusText: 'Alumni',
+                      })
+                    }
+                  >
+                    <Ionicons name="logo-whatsapp" size={20} color="#ffffff" style={{ marginRight: 8 }} />
+                    <Text className="text-white font-bold text-base">Kirim NIA ke WhatsApp Saya</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity 
+                    className="w-full bg-slate-900 p-4 rounded-xl items-center"
                     onPress={() => router.replace('/')}
                   >
                     <Text className="text-white font-bold text-base">Masuk / Login Sekarang</Text>

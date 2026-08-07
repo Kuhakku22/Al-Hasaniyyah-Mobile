@@ -9,6 +9,7 @@ import {
   ParsedAlumniItem,
   STATUS_CODES,
 } from "../lib/nia";
+import { openWhatsAppMessage } from "../lib/whatsapp";
 
 // Sample text from Word document for instant testing
 const SAMPLE_WORD_TEXT = `1. Ahmad Baidlowi | Alumni | Pasuruan Jawa Timur | 2015 | 2018 | 081299991111
@@ -225,8 +226,8 @@ export default function AdminPortal() {
     setEditingNia((prev) => ({ ...prev, [item.id]: result.nia }));
   };
 
-  // Action: Approve Alumni
-  const handleApproveAlumni = async (id: string, phone?: string | null) => {
+  // Action: Approve Alumni & Auto Send WhatsApp
+  const handleApproveAlumni = async (id: string, nama: string, phone?: string | null) => {
     const rawNia = editingNia[id] || "";
     if (!rawNia.trim()) {
       alert("Silakan masukkan Nomor Induk Anggota (NIA) atau klik '⚡ Auto NIA (AI)' terlebih dahulu.");
@@ -244,7 +245,13 @@ export default function AdminPortal() {
         .eq("id", id);
 
       if (error) throw error;
-      alert("Alumni berhasil disetujui!");
+      
+      // Auto buka WhatsApp untuk kirim notifikasi NIA ke Alumni
+      if (phone) {
+        openWhatsAppMessage({ phone, nama, nia: rawNia });
+      }
+
+      alert(`Alumni ${nama} berhasil disetujui! Notifikasi WhatsApp dibuka.`);
       fetchData();
     } catch (e) {
       // Mock update
@@ -253,7 +260,12 @@ export default function AdminPortal() {
           a.id === id ? { ...a, nomor_id_unik: rawNia, status_verifikasi: "verified" } : a
         )
       );
-      alert("Mode Demo: Alumni berhasil disetujui secara lokal.");
+
+      if (phone) {
+        openWhatsAppMessage({ phone, nama, nia: rawNia });
+      }
+
+      alert("Mode Demo: Alumni berhasil disetujui & Notifikasi WA dibuka.");
     }
   };
 
@@ -350,9 +362,18 @@ export default function AdminPortal() {
       if (error) throw error;
 
       setBulkSaveMsg(`Sukses! ${parsedItems.length} data alumni berhasil disimpan ke database Supabase.`);
-      alert(`Berhasil menyimpan ${parsedItems.length} alumni!`);
-      setParsedItems([]);
-      setBulkInput("");
+      
+      // Prompt untuk mengirim notifikasi WA pertama
+      if (parsedItems.length > 0 && parsedItems[0].nomor_hp) {
+        openWhatsAppMessage({
+          phone: parsedItems[0].nomor_hp,
+          nama: parsedItems[0].nama_lengkap,
+          nia: parsedItems[0].generated_nia,
+          statusText: parsedItems[0].status_anggota,
+        });
+      }
+
+      alert(`Berhasil menyimpan ${parsedItems.length} alumni! Notifikasi WA alumni pertama dibuka.`);
       fetchData();
     } catch (err: any) {
       console.warn("Gagal menyimpan ke database Supabase, mengaktifkan mode demo lokal:", err);
@@ -369,9 +390,17 @@ export default function AdminPortal() {
 
       setAlumni((prev) => [...newMockItems, ...prev]);
       setBulkSaveMsg(`Mode Demo: ${parsedItems.length} data alumni ditambahkan secara lokal.`);
-      alert(`Mode Demo: ${parsedItems.length} alumni berhasil ditambahkan!`);
-      setParsedItems([]);
-      setBulkInput("");
+      
+      if (parsedItems.length > 0 && parsedItems[0].nomor_hp) {
+        openWhatsAppMessage({
+          phone: parsedItems[0].nomor_hp,
+          nama: parsedItems[0].nama_lengkap,
+          nia: parsedItems[0].generated_nia,
+          statusText: parsedItems[0].status_anggota,
+        });
+      }
+
+      alert(`Mode Demo: ${parsedItems.length} alumni berhasil ditambahkan! Notifikasi WA dibuka.`);
     } finally {
       setIsSavingBulk(false);
     }
@@ -470,7 +499,7 @@ export default function AdminPortal() {
           <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
           <div>
             <h2 className="text-2xl font-black text-white">Ahlan wa Sahlan, Admin!</h2>
-            <p className="text-emerald-300 text-xs mt-1">Kelola data pendaftaran alumni baru, masukan data Word massal dengan Generator NIA Baku AI.</p>
+            <p className="text-emerald-300 text-xs mt-1">Kelola data pendaftaran alumni baru, masukan data Word massal dengan Generator NIA Baku AI & Notifikasi WA Otomatis.</p>
           </div>
           <button
             onClick={fetchData}
@@ -555,7 +584,7 @@ export default function AdminPortal() {
                   <div className="flex justify-between items-center pb-4 border-b border-slate-800">
                     <div>
                       <h4 className="text-base font-black text-white">Verifikasi Pendaftaran Alumni Baru</h4>
-                      <p className="text-slate-400 text-[11px] mt-0.5">Gunakan tombol &quot;⚡ Auto NIA (AI)&quot; untuk membuat NIA baku otomatis (X.YY.ZZZZ.AAAAA).</p>
+                      <p className="text-slate-400 text-[11px] mt-0.5">Gunakan tombol &quot;⚡ Auto NIA (AI)&quot; lalu klik Setujui untuk mengirimkan Notifikasi WA otomatis.</p>
                     </div>
                     <span className="bg-amber-500/10 border border-amber-500/20 text-amber-500 px-3 py-1 rounded-full text-[10px] font-bold">
                       {alumni.filter((a) => a.status_verifikasi === "pending").length} menunggu verifikasi
@@ -604,10 +633,10 @@ export default function AdminPortal() {
                                       ⚡ Auto NIA (AI)
                                     </button>
                                     <button
-                                      onClick={() => handleApproveAlumni(a.id, a.nomor_hp)}
-                                      className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold hover:bg-emerald-500 transition-colors"
+                                      onClick={() => handleApproveAlumni(a.id, a.nama_lengkap, a.nomor_hp)}
+                                      className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold hover:bg-emerald-500 transition-colors flex items-center gap-1"
                                     >
-                                      Setujui
+                                      Setujui & WA
                                     </button>
                                     <button
                                       onClick={() => handleRejectAlumni(a.id)}
@@ -735,7 +764,8 @@ export default function AdminPortal() {
                               <th className="py-3 px-3">Provinsi BPS</th>
                               <th className="py-3 px-3">Tahun</th>
                               <th className="py-3 px-4">Nomor WA</th>
-                              <th className="py-3 px-4">Nomor Induk Anggota (NIA Hasil Generator)</th>
+                              <th className="py-3 px-4">Nomor Induk Anggota (NIA)</th>
+                              <th className="py-3 px-3 text-center">Kirim WA</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -772,6 +802,22 @@ export default function AdminPortal() {
                                   <span className="bg-amber-500/10 border border-amber-500/30 text-amber-400 font-mono font-bold px-3 py-1 rounded-lg text-xs tracking-wider">
                                     {item.generated_nia}
                                   </span>
+                                </td>
+                                <td className="py-3 px-3 text-center">
+                                  <button
+                                    onClick={() =>
+                                      openWhatsAppMessage({
+                                        phone: item.nomor_hp,
+                                        nama: item.nama_lengkap,
+                                        nia: item.generated_nia,
+                                        statusText: item.status_anggota,
+                                      })
+                                    }
+                                    className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-all flex items-center justify-center gap-1 mx-auto"
+                                    title="Kirim pesan WA konfirmasi NIA resmi ke Alumni"
+                                  >
+                                    💬 WA
+                                  </button>
                                 </td>
                               </tr>
                             ))}
