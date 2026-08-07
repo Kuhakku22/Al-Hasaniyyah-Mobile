@@ -208,7 +208,7 @@ export default function AdminPortal() {
     }
   };
 
-  // BroadcastChannel + Polling 1 Detik untuk Realtime Vercel Instant 0.001s Sync
+  // BroadcastChannel + Storage Event Listener + Polling 1 Detik untuk Realtime Vercel Instant Sync
   useEffect(() => {
     if (!isLoggedIn) return;
 
@@ -216,6 +216,14 @@ export default function AdminPortal() {
     const interval = setInterval(() => {
       fetchData();
     }, 1000);
+
+    const handleStorageChange = () => {
+      fetchData();
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("storage", handleStorageChange);
+    }
 
     if (typeof window !== "undefined" && "BroadcastChannel" in window) {
       const channel = new BroadcastChannel("alumni_channel");
@@ -231,10 +239,18 @@ export default function AdminPortal() {
       return () => {
         channel.close();
         clearInterval(interval);
+        if (typeof window !== "undefined") {
+          window.removeEventListener("storage", handleStorageChange);
+        }
       };
     }
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("storage", handleStorageChange);
+      }
+    };
   }, [isLoggedIn]);
 
   // Generate Auto NIA Baku (X.YY.ZZZZ.AAAAA) untuk Alumni Pending

@@ -64,39 +64,31 @@ export default function RegisterScreen() {
       const randomDigits = Math.floor(1000 + Math.random() * 9000);
       const tempId = `REG-${cleanPhone.slice(-4) || '0000'}-${randomDigits}`;
 
-      // 1. Kirim pendaftaran ke API Server Vercel
-      const apiEndpoint = Platform.OS === 'web' && typeof window !== 'undefined'
-        ? (window.location.origin.includes(':8081') ? 'http://localhost:3000/api/register' : '/api/register')
-        : '/api/register';
-
-      const newItem = {
-        id: `reg-${Date.now()}-${randomDigits}`,
-        nama_lengkap: formData.nama.trim(),
-        alamat_domisili: formData.domisili.trim(),
-        angkatan: parseInt(formData.tahunLulus) || 2024,
-        nomor_hp: formData.phone.trim(),
-        nomor_id_unik: tempId,
-        status_verifikasi: 'pending',
-        created_at: new Date().toISOString(),
+      // 1. Kirim pendaftaran ke seluruh endpoint API (Local & Vercel)
+      const payload = {
+        nama: formData.nama,
+        phone: formData.phone,
+        domisili: formData.domisili,
+        tahunMasuk: formData.tahunMasuk,
+        tahunKeluar: formData.tahunKeluar,
+        tahunLulus: formData.tahunLulus,
+        tempatTanggalLahir: formData.tempatTanggalLahir,
+        alamatKtp: formData.alamatKtp,
       };
 
-      try {
-        await fetch(apiEndpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            nama: formData.nama,
-            phone: formData.phone,
-            domisili: formData.domisili,
-            tahunMasuk: formData.tahunMasuk,
-            tahunKeluar: formData.tahunKeluar,
-            tahunLulus: formData.tahunLulus,
-            tempatTanggalLahir: formData.tempatTanggalLahir,
-            alamatKtp: formData.alamatKtp,
-          }),
-        });
-      } catch (apiErr) {
-        console.warn('API Register fetch fallback:', apiErr);
+      const endpoints = [
+        '/api/register',
+        'http://localhost:3000/api/register',
+      ];
+
+      for (const ep of endpoints) {
+        try {
+          await fetch(ep, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+        } catch (apiErr) {}
       }
 
       // 2. Simpan ke LocalStorage & BroadcastChannel Vercel (Persistens Cepat di Vercel Domain)
@@ -114,6 +106,9 @@ export default function RegisterScreen() {
           }
           existing.unshift(newItem);
           window.localStorage.setItem(pendingKey, JSON.stringify(existing));
+
+          // Trigger storage event manual untuk tab sejenis
+          window.dispatchEvent(new Event('storage'));
 
           if ('BroadcastChannel' in window) {
             const channel = new BroadcastChannel('alumni_channel');
