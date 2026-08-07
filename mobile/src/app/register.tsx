@@ -58,17 +58,8 @@ export default function RegisterScreen() {
 
     setLoading(true);
     try {
-      // Buat Nomor Induk Anggota (NIA) Baku resmi (X.YY.ZZZZ.AAAAA)
-      let sequenceNum = Math.floor(100 + Math.random() * 900);
-      try {
-        const { count } = await supabase.from('alumni').select('*', { count: 'exact', head: true });
-        if (count && count > 0) {
-          sequenceNum = count + 1;
-        }
-      } catch (e) {
-        // Fallback sequence
-      }
-
+      // 1. Hitung Nomor Induk Anggota (NIA) Baku resmi secara instan
+      const sequenceNum = Math.floor(1000 + Math.random() * 9000);
       const provDetected = detectProvinceCode(formData.domisili.trim());
       const niaResult = generateStandardNIA({
         statusText: 'Alumni',
@@ -80,29 +71,7 @@ export default function RegisterScreen() {
 
       const tempId = niaResult.nia;
 
-      try {
-        await supabase
-          .from('alumni')
-          .insert([
-            {
-              nama_lengkap: formData.nama.trim(),
-              tempat_tanggal_lahir: formData.tempatTanggalLahir.trim(),
-              alamat_ktp: formData.alamatKtp.trim(),
-              alamat_domisili: formData.domisili.trim(),
-              tahun_masuk: parseInt(formData.tahunMasuk) || null,
-              tahun_keluar: parseInt(formData.tahunKeluar) || null,
-              tahun_lulus: parseInt(formData.tahunLulus) || null,
-              angkatan: parseInt(formData.tahunLulus) || null,
-              nomor_hp: formData.phone.trim(),
-              nomor_id_unik: tempId,
-              status_verifikasi: 'verified' // Auto verified agar dapat langsung digunakan untuk login
-            }
-          ]);
-      } catch (dbErr) {
-        console.warn('Gagal menyimpan ke database Supabase, menggunakan lokal storage:', dbErr);
-      }
-
-      // Simpan ke AsyncStorage lokal untuk sesi pengguna
+      // 2. Simpan ke AsyncStorage / LocalStorage secara instan
       const alumniProfile = {
         nama_lengkap: formData.nama.trim(),
         nomor_id_unik: tempId,
@@ -114,10 +83,35 @@ export default function RegisterScreen() {
 
       try {
         await AsyncStorage.setItem('@user_alumni', JSON.stringify(alumniProfile));
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          window.localStorage.setItem('@user_alumni', JSON.stringify(alumniProfile));
+        }
       } catch (err) {
-        // Ignore storage error
+        // Storage fallback
       }
 
+      // 3. Kirim ke Supabase di background dengan timeout 1.5 detik agar tidak menghambat tampilan
+      const insertPayload = {
+        nama_lengkap: formData.nama.trim(),
+        tempat_tanggal_lahir: formData.tempatTanggalLahir.trim(),
+        alamat_ktp: formData.alamatKtp.trim(),
+        alamat_domisili: formData.domisili.trim(),
+        tahun_masuk: parseInt(formData.tahunMasuk) || null,
+        tahun_keluar: parseInt(formData.tahunKeluar) || null,
+        tahun_lulus: parseInt(formData.tahunLulus) || null,
+        angkatan: parseInt(formData.tahunLulus) || null,
+        nomor_hp: formData.phone.trim(),
+        nomor_id_unik: tempId,
+        status_verifikasi: 'verified',
+      };
+
+      const dbPromise = supabase.from('alumni').insert([insertPayload]);
+      const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 1500));
+
+      // Jalankan tanpa memblokir pengguna
+      Promise.race([dbPromise, timeoutPromise]).catch(() => {});
+
+      // 4. Langsung tampilkan layar sukses!
       setGeneratedNia(tempId);
       setIsSuccess(true);
     } catch (e: any) {
