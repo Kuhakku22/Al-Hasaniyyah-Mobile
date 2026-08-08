@@ -8,6 +8,7 @@ import { ThemedText } from '@/components/themed-text';
 import { supabase } from '@/lib/supabase';
 import { detectProvinceCode, generateStandardNIA } from '@/lib/nia';
 import { openWhatsAppMessageMobile } from '@/lib/whatsapp';
+import { addCloudPendingRegistration } from '@/lib/cloudSync';
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -64,7 +65,10 @@ export default function RegisterScreen() {
       const randomDigits = Math.floor(1000 + Math.random() * 9000);
       const tempId = `REG-${cleanPhone.slice(-4) || '0000'}-${randomDigits}`;
 
-      // 1. Kirim pendaftaran ke seluruh endpoint API (Vercel Admin Utama & Fallback)
+      // 1. Kirim pendaftaran langsung ke CLOUD REAL-TIME BUCKET 24/7 (Multi-Device Sync)
+      addCloudPendingRegistration(newItem).catch(() => {});
+
+      // 2. Kirim pendaftaran ke seluruh endpoint API (Local & Vercel)
       const payload = {
         nama: formData.nama,
         phone: formData.phone,

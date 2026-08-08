@@ -8,6 +8,10 @@ import {
   ParsedAlumniItem,
 } from "../lib/nia";
 import { openWhatsAppMessage } from "../lib/whatsapp";
+import {
+  getCloudPendingRegistrations,
+  removeCloudPendingRegistration,
+} from "../lib/cloudSync";
 
 // Sample text from Word document for instant testing
 const SAMPLE_WORD_TEXT = `1. Ahmad Baidlowi | Alumni | Pasuruan Jawa Timur | 2015 | 2018 | 081299991111
@@ -130,9 +134,12 @@ export default function AdminPortal() {
     sessionStorage.removeItem("adminAuth");
   };
 
-  // Fetch data 4-Layer (API Server Vercel + LocalStorage Vercel Domain + Supabase + Mock)
+  // Fetch data Real-time Cloud Store + API + LocalStorage + Supabase
   const fetchData = async () => {
     try {
+      // 1. Ambil pendaftar baru dari Global Cloud Store (JSONBlob)
+      const cloudPendings = await getCloudPendingRegistrations();
+
       let apiList: Alumni[] = [];
       try {
         const apiRes = await fetch("/api/register");
@@ -165,7 +172,15 @@ export default function AdminPortal() {
       const mergedList: Alumni[] = [];
       const seenPhones = new Set<string>();
 
-      // 1. Pendaftar baru dari LocalStorage Vercel Domain di urutan PALING ATAS
+      // 1. Pendaftar baru dari CLOUD REAL-TIME di urutan PALING ATAS
+      cloudPendings.forEach((p) => {
+        if (p.nomor_hp && !seenPhones.has(p.nomor_hp)) {
+          seenPhones.add(p.nomor_hp);
+          mergedList.push(p);
+        }
+      });
+
+      // 2. Pendaftar baru dari LocalStorage Vercel Domain
       localPendings.forEach((p) => {
         if (p.nomor_hp && !seenPhones.has(p.nomor_hp)) {
           seenPhones.add(p.nomor_hp);
@@ -173,7 +188,7 @@ export default function AdminPortal() {
         }
       });
 
-      // 2. Pendaftar baru dari API Vercel
+      // 3. Pendaftar baru dari API Vercel
       apiList.forEach((p) => {
         if (p.nomor_hp && !seenPhones.has(p.nomor_hp)) {
           seenPhones.add(p.nomor_hp);
@@ -181,7 +196,7 @@ export default function AdminPortal() {
         }
       });
 
-      // 3. Data DB Supabase
+      // 4. Data DB Supabase
       dbList.forEach((a) => {
         if (a.nomor_hp && !seenPhones.has(a.nomor_hp)) {
           seenPhones.add(a.nomor_hp);
@@ -189,7 +204,7 @@ export default function AdminPortal() {
         }
       });
 
-      // 4. Mock data cadangan
+      // 5. Mock data cadangan
       MOCK_ALUMNI.forEach((a) => {
         if (a.nomor_hp && !seenPhones.has(a.nomor_hp)) {
           seenPhones.add(a.nomor_hp);
@@ -208,7 +223,7 @@ export default function AdminPortal() {
     }
   };
 
-  // BroadcastChannel + Storage Event Listener + Polling 1 Detik untuk Realtime Vercel Instant Sync
+  // BroadcastChannel + Storage Event Listener + Polling 1 Detik untuk Realtime Cloud Sync 100%
   useEffect(() => {
     if (!isLoggedIn) return;
 
@@ -276,6 +291,10 @@ export default function AdminPortal() {
     if (!rawNia.trim()) {
       alert("Silakan masukkan Nomor Induk Anggota (NIA) atau klik '⚡ Auto NIA (AI)' terlebih dahulu.");
       return;
+    }
+
+    if (phone) {
+      removeCloudPendingRegistration(phone).catch(() => {});
     }
 
     try {

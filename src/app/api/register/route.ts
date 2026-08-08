@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import fs from "fs";
 import path from "path";
+import { getCloudPendingRegistrations, addCloudPendingRegistration } from "@/lib/cloudSync";
 
 const TMP_FILE = path.join(process.cwd(), ".next", "pending_registrations.json");
 const VERCEL_TMP_FILE = "/tmp/pending_registrations.json";
@@ -49,6 +50,11 @@ export async function OPTIONS() {
 }
 
 export async function GET() {
+  let cloudList: any[] = [];
+  try {
+    cloudList = await getCloudPendingRegistrations();
+  } catch (err) {}
+
   let dbList: any[] = [];
   try {
     const { data } = await supabase
@@ -58,25 +64,12 @@ export async function GET() {
     if (data) dbList = data;
   } catch (err) {}
 
-  // Synchronize dengan proyek Vercel Mobile terpisah jika ada
-  let mobileVercelList: any[] = [];
-  try {
-    const res = await fetch("https://al-hasaniyyah-mobile.vercel.app/api/register", {
-      cache: "no-store",
-      headers: { "Cache-Control": "no-cache" },
-    });
-    const json = await res.json();
-    if (json && json.data && Array.isArray(json.data)) {
-      mobileVercelList = json.data;
-    }
-  } catch (e) {}
-
   const fileStored = readStoredRegistrations();
   const mergedList: any[] = [];
   const seenPhones = new Set<string>();
 
-  // 1. Pendaftar baru dari Mobile Vercel Project
-  mobileVercelList.forEach((item) => {
+  // 1. Pendaftar baru dari Global Cloud Store
+  cloudList.forEach((item) => {
     if (item.nomor_hp && !seenPhones.has(item.nomor_hp)) {
       seenPhones.add(item.nomor_hp);
       mergedList.push(item);
@@ -124,12 +117,15 @@ export async function POST(request: Request) {
       created_at: new Date().toISOString(),
     };
 
-    // Simpan ke file storage Vercel serverless
+    // 1. Simpan ke Cloud Storage Global (Realtime 24/7)
+    await addCloudPendingRegistration(newRecord).catch(() => {});
+
+    // 2. Simpan ke file storage Vercel serverless
     const current = readStoredRegistrations();
     current.unshift(newRecord);
     saveStoredRegistrations(current);
 
-    // Simpan ke Supabase di background
+    // 3. Simpan ke Supabase di background
     try {
       await supabase.from("alumni").insert([{
         nama_lengkap: newRecord.nama_lengkap,
