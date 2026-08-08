@@ -60,10 +60,23 @@ export default function RegisterScreen() {
 
     setLoading(true);
     try {
-      // ID Pendaftaran Sementara
+      // ID Pendaftaran Sementara & Objek Data Pendaftaran
       const cleanPhone = formData.phone.replace(/[^0-9]/g, '');
       const randomDigits = Math.floor(1000 + Math.random() * 9000);
       const tempId = `REG-${cleanPhone.slice(-4) || '0000'}-${randomDigits}`;
+
+      const newItem = {
+        id: `reg-${Date.now()}-${randomDigits}`,
+        nama_lengkap: formData.nama.trim(),
+        alamat_domisili: formData.domisili.trim(),
+        angkatan: parseInt(formData.tahunLulus) || 2024,
+        nomor_hp: formData.phone.trim(),
+        nomor_id_unik: tempId,
+        status_verifikasi: 'pending',
+        tahun_masuk: parseInt(formData.tahunMasuk) || null,
+        tahun_keluar: parseInt(formData.tahunKeluar) || null,
+        created_at: new Date().toISOString(),
+      };
 
       // 1. Kirim pendaftaran langsung ke CLOUD REAL-TIME BUCKET 24/7 (Multi-Device Sync)
       addCloudPendingRegistration(newItem).catch(() => {});
