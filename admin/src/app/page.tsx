@@ -10,7 +10,10 @@ import {
 import { openWhatsAppMessage } from "../lib/whatsapp";
 import {
   getCloudPendingRegistrations,
+  getCloudVerifiedAlumni,
+  addCloudVerifiedAlumni,
   removeCloudPendingRegistration,
+  PendingRegistration,
 } from "../lib/cloudSync";
 
 // Sample text from Word document for instant testing
@@ -137,8 +140,14 @@ export default function AdminPortal() {
   // Fetch data Real-time Cloud Store + API + LocalStorage + Supabase
   const fetchData = async () => {
     try {
-      // 1. Ambil pendaftar baru dari Global Cloud Store (JSONBlob)
+      // 1. Ambil pendaftar dari Global Cloud Store (Pending & Verified)
       const cloudPendings = await getCloudPendingRegistrations();
+      const cloudVerified = await getCloudVerifiedAlumni();
+
+      const verifiedPhones = new Set<string>();
+      cloudVerified.forEach((v) => {
+        if (v.nomor_hp) verifiedPhones.add(v.nomor_hp);
+      });
 
       let apiList: Alumni[] = [];
       try {
@@ -148,16 +157,6 @@ export default function AdminPortal() {
           apiList = apiJson.data;
         }
       } catch (err) {}
-
-      let localPendings: Alumni[] = [];
-      if (typeof window !== "undefined") {
-        try {
-          const raw = window.localStorage.getItem("@pending_registrations");
-          if (raw && raw.trim()) {
-            localPendings = JSON.parse(raw);
-          }
-        } catch (err) {}
-      }
 
       let dbList: Alumni[] = [];
       try {
@@ -172,31 +171,26 @@ export default function AdminPortal() {
       const mergedList: Alumni[] = [];
       const seenPhones = new Set<string>();
 
-      // 1. Pendaftar baru dari CLOUD REAL-TIME di urutan PALING ATAS
+      // 1. Alumni Terverifikasi dari Cloud Store di urutan PALING ATAS
+      cloudVerified.forEach((v) => {
+        if (v.nomor_hp && !seenPhones.has(v.nomor_hp)) {
+          seenPhones.add(v.nomor_hp);
+          mergedList.push({
+            ...v,
+            status_verifikasi: "verified",
+          });
+        }
+      });
+
+      // 2. Pendaftar Pending dari Global Cloud Store (yang BELUM terverifikasi)
       cloudPendings.forEach((p) => {
-        if (p.nomor_hp && !seenPhones.has(p.nomor_hp)) {
+        if (p.nomor_hp && !verifiedPhones.has(p.nomor_hp) && !seenPhones.has(p.nomor_hp)) {
           seenPhones.add(p.nomor_hp);
           mergedList.push(p);
         }
       });
 
-      // 2. Pendaftar baru dari LocalStorage Vercel Domain
-      localPendings.forEach((p) => {
-        if (p.nomor_hp && !seenPhones.has(p.nomor_hp)) {
-          seenPhones.add(p.nomor_hp);
-          mergedList.push(p);
-        }
-      });
-
-      // 3. Pendaftar baru dari API Vercel
-      apiList.forEach((p) => {
-        if (p.nomor_hp && !seenPhones.has(p.nomor_hp)) {
-          seenPhones.add(p.nomor_hp);
-          mergedList.push(p);
-        }
-      });
-
-      // 4. Data DB Supabase
+      // 3. Data DB Supabase
       dbList.forEach((a) => {
         if (a.nomor_hp && !seenPhones.has(a.nomor_hp)) {
           seenPhones.add(a.nomor_hp);
@@ -204,7 +198,7 @@ export default function AdminPortal() {
         }
       });
 
-      // 5. Mock data cadangan
+      // 4. Mock data cadangan
       MOCK_ALUMNI.forEach((a) => {
         if (a.nomor_hp && !seenPhones.has(a.nomor_hp)) {
           seenPhones.add(a.nomor_hp);
@@ -223,7 +217,7 @@ export default function AdminPortal() {
     }
   };
 
-  // BroadcastChannel + Storage Event Listener + Polling 1 Detik untuk Realtime Cloud Sync 100%
+  // Polling 1 Detik untuk Realtime Cloud Sync 100%
   useEffect(() => {
     if (!isLoggedIn) return;
 
@@ -232,39 +226,8 @@ export default function AdminPortal() {
       fetchData();
     }, 1000);
 
-    const handleStorageChange = () => {
-      fetchData();
-    };
-
-    if (typeof window !== "undefined") {
-      window.addEventListener("storage", handleStorageChange);
-    }
-
-    if (typeof window !== "undefined" && "BroadcastChannel" in window) {
-      const channel = new BroadcastChannel("alumni_channel");
-      channel.onmessage = (event) => {
-        if (event.data && event.data.type === "NEW_REGISTRATION") {
-          const newReg = event.data.data;
-          setAlumni((prev) => {
-            const filtered = prev.filter((p) => p.nomor_hp !== newReg.nomor_hp);
-            return [newReg, ...filtered];
-          });
-        }
-      };
-      return () => {
-        channel.close();
-        clearInterval(interval);
-        if (typeof window !== "undefined") {
-          window.removeEventListener("storage", handleStorageChange);
-        }
-      };
-    }
-
     return () => {
       clearInterval(interval);
-      if (typeof window !== "undefined") {
-        window.removeEventListener("storage", handleStorageChange);
-      }
     };
   }, [isLoggedIn]);
 
@@ -285,7 +248,7 @@ export default function AdminPortal() {
     setEditingNia((prev) => ({ ...prev, [item.id]: result.nia }));
   };
 
-  // Action: Approve Alumni & Auto Send WhatsApp
+  // Action: Approve Alumni & Persist ke Cloud Verified + Auto Send WhatsApp
   const handleApproveAlumni = async (id: string, nama: string, phone?: string | null) => {
     const rawNia = editingNia[id] || "";
     if (!rawNia.trim()) {
@@ -293,10 +256,27 @@ export default function AdminPortal() {
       return;
     }
 
+    const targetItem = alumni.find((a) => a.id === id);
+    const approvedObject: PendingRegistration = {
+      id: id,
+      nomor_id_unik: rawNia,
+      nama_lengkap: nama,
+      angkatan: targetItem?.angkatan || 2024,
+      alamat_domisili: targetItem?.alamat_domisili || "Indonesia",
+      status_verifikasi: "verified",
+      nomor_hp: phone || null,
+      created_at: new Date().toISOString(),
+    };
+
+    // 1. Simpan ke Global Cloud Verified Store 24/7 (Persisten Lintas Perangkat)
+    await addCloudVerifiedAlumni(approvedObject).catch(() => {});
+
+    // 2. Hapus dari Cloud Pending Store
     if (phone) {
-      removeCloudPendingRegistration(phone).catch(() => {});
+      await removeCloudPendingRegistration(phone).catch(() => {});
     }
 
+    // 3. Simpan ke Supabase di Background
     try {
       await supabase
         .from("alumni")
@@ -308,22 +288,12 @@ export default function AdminPortal() {
         .eq("id", id);
     } catch (e) {}
 
-    // Update LocalStorage jika ada
-    if (typeof window !== "undefined" && phone) {
-      try {
-        const raw = window.localStorage.getItem("@pending_registrations");
-        if (raw) {
-          const list: Alumni[] = JSON.parse(raw);
-          const filtered = list.filter((p) => p.nomor_hp !== phone);
-          window.localStorage.setItem("@pending_registrations", JSON.stringify(filtered));
-        }
-      } catch (err) {}
-    }
-
     // Update lokal instan
-    setAlumni(
-      alumni.map((a) =>
-        a.id === id ? { ...a, nomor_id_unik: rawNia, status_verifikasi: "verified" } : a
+    setAlumni((prev) =>
+      prev.map((a) =>
+        a.id === id || (phone && a.nomor_hp === phone)
+          ? { ...a, nomor_id_unik: rawNia, status_verifikasi: "verified" }
+          : a
       )
     );
 
@@ -332,7 +302,7 @@ export default function AdminPortal() {
       openWhatsAppMessage({ phone, nama, nia: rawNia });
     }
 
-    alert(`Alumni ${nama} berhasil disetujui! Notifikasi WhatsApp dibuka.`);
+    alert(`Alumni ${nama} BERHASIL DISETUJUI & TERVERIFIKASI! Notifikasi WhatsApp dibuka.`);
     fetchData();
   };
 
@@ -395,12 +365,25 @@ export default function AdminPortal() {
     setBulkSaveMsg("");
   };
 
-  // Handler: Save Parsed Bulk Alumni to Supabase
+  // Handler: Save Parsed Bulk Alumni to Supabase & Cloud Verified
   const handleSaveBulkToSupabase = async () => {
     if (parsedItems.length === 0) return;
 
     setIsSavingBulk(true);
-    setBulkSaveMsg("Menyimpan seluruh data alumni ke database Supabase...");
+    setBulkSaveMsg("Menyimpan seluruh data alumni ke database & Cloud Store...");
+
+    for (const item of parsedItems) {
+      await addCloudVerifiedAlumni({
+        id: item.idTemp,
+        nama_lengkap: item.nama_lengkap,
+        nomor_id_unik: item.generated_nia,
+        alamat_domisili: item.alamat_domisili,
+        angkatan: item.tahun_keluar,
+        nomor_hp: item.nomor_hp,
+        status_verifikasi: "verified",
+        created_at: new Date().toISOString(),
+      }).catch(() => {});
+    }
 
     try {
       const payload = parsedItems.map((item) => ({
@@ -581,6 +564,7 @@ export default function AdminPortal() {
         <div className="flex bg-slate-900 p-1.5 rounded-xl border border-slate-800 max-w-3xl overflow-x-auto">
           {[
             { id: "verifikasi", label: "Verifikasi Pendaftaran", badge: pendingCount },
+            { id: "verified_list", label: "Alumni Terverifikasi", badge: verifiedCount },
             { id: "bulk_import", label: "✨ Import Bulk & Gen NIA AI" },
             { id: "iuran", label: "Iuran Wajib" },
             { id: "infak", label: "Infak Alumni" },
@@ -614,13 +598,13 @@ export default function AdminPortal() {
             </div>
           ) : (
             <div className="p-6">
-              {/* TAB 1: VERIFIKASI ALUMNI */}
+              {/* TAB 1: VERIFIKASI ALUMNI (PENDING) */}
               {activeTab === "verifikasi" && (
                 <div className="space-y-4">
                   <div className="flex justify-between items-center pb-4 border-b border-slate-800">
                     <div>
                       <h4 className="text-base font-black text-white">Verifikasi Pendaftaran Alumni Baru</h4>
-                      <p className="text-slate-400 text-[11px] mt-0.5">Gunakan tombol &quot;⚡ Auto NIA (AI)&quot; lalu klik Setujui untuk mengirimkan Notifikasi WA otomatis.</p>
+                      <p className="text-slate-400 text-[11px] mt-0.5">Gunakan tombol &quot;⚡ Auto NIA (AI)&quot; lalu klik Setujui untuk mengkonfirmasi & mengirimkan Notifikasi WA otomatis.</p>
                     </div>
                     <span className="bg-amber-500/10 border border-amber-500/20 text-amber-500 px-3 py-1 rounded-full text-[10px] font-bold">
                       {alumni.filter((a) => a.status_verifikasi === "pending").length} menunggu verifikasi
@@ -670,7 +654,7 @@ export default function AdminPortal() {
                                     </button>
                                     <button
                                       onClick={() => handleApproveAlumni(a.id, a.nama_lengkap, a.nomor_hp)}
-                                      className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold hover:bg-emerald-500 transition-colors flex items-center gap-1"
+                                      className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold hover:bg-emerald-500 transition-colors flex items-center gap-1 shadow-md shadow-emerald-900/30"
                                     >
                                       Setujui & WA
                                     </button>
@@ -697,7 +681,67 @@ export default function AdminPortal() {
                 </div>
               )}
 
-              {/* TAB 2: IMPORT BULK & GEN NIA AI */}
+              {/* TAB 2: ALUMNI TERVERIFIKASI */}
+              {activeTab === "verified_list" && (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center pb-4 border-b border-slate-800">
+                    <div>
+                      <h4 className="text-base font-black text-white">Daftar Alumni Terverifikasi (Resmi Registered)</h4>
+                      <p className="text-slate-400 text-[11px] mt-0.5">Alumni yang telah disetujui & memiliki Nomor Induk Anggota (NIA) resmi.</p>
+                    </div>
+                    <span className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full text-[10px] font-bold">
+                      {alumni.filter((a) => a.status_verifikasi === "verified").length} Alumni Terdaftar
+                    </span>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="text-slate-400 border-b border-slate-800">
+                          <th className="py-3 px-4">Nama Lengkap</th>
+                          <th className="py-3 px-4">Nomor Induk Anggota (NIA)</th>
+                          <th className="py-3 px-4">Angkatan</th>
+                          <th className="py-3 px-4">Domisili</th>
+                          <th className="py-3 px-4">Nomor WA</th>
+                          <th className="py-3 px-4 text-center">Status Account</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {alumni.filter((a) => a.status_verifikasi === "verified").length > 0 ? (
+                          alumni
+                            .filter((a) => a.status_verifikasi === "verified")
+                            .map((a) => (
+                              <tr key={a.id} className="border-b border-slate-800/50 hover:bg-slate-800/30">
+                                <td className="py-3 px-4 font-bold text-white">{a.nama_lengkap}</td>
+                                <td className="py-3 px-4">
+                                  <span className="bg-amber-500/10 border border-amber-500/30 text-amber-400 font-mono font-bold px-3 py-1 rounded-lg text-xs tracking-wider">
+                                    {a.nomor_id_unik}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-4 text-slate-300">{a.angkatan || "-"}</td>
+                                <td className="py-3 px-4 text-slate-300">{a.alamat_domisili || "-"}</td>
+                                <td className="py-3 px-4 font-mono text-slate-300">{a.nomor_hp || "-"}</td>
+                                <td className="py-3 px-4 text-center">
+                                  <span className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold px-2.5 py-1 rounded-full">
+                                    ✓ AKTIF & BISA LOGIN
+                                  </span>
+                                </td>
+                              </tr>
+                            ))
+                        ) : (
+                          <tr>
+                            <td colSpan={6} className="text-center py-12 text-slate-500 font-semibold">
+                              Belum ada alumni yang terverifikasi.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 3: IMPORT BULK & GEN NIA AI */}
               {activeTab === "bulk_import" && (
                 <div className="space-y-6">
                   <div className="flex flex-col md:flex-row justify-between items-start md:items-center pb-4 border-b border-slate-800 gap-3">
@@ -865,7 +909,7 @@ export default function AdminPortal() {
                 </div>
               )}
 
-              {/* TAB 3: IURAN WAJIB */}
+              {/* TAB 4: IURAN WAJIB */}
               {activeTab === "iuran" && (
                 <div className="space-y-4">
                   <div className="flex justify-between items-center pb-4 border-b border-slate-800">
@@ -922,7 +966,7 @@ export default function AdminPortal() {
                 </div>
               )}
 
-              {/* TAB 4: INFAK ALUMNI */}
+              {/* TAB 5: INFAK ALUMNI */}
               {activeTab === "infak" && (
                 <div className="space-y-4">
                   <div className="flex justify-between items-center pb-4 border-b border-slate-800">
@@ -975,7 +1019,7 @@ export default function AdminPortal() {
                 </div>
               )}
 
-              {/* TAB 5: KONSULTASI & MASUKAN */}
+              {/* TAB 6: KONSULTASI & MASUKAN */}
               {activeTab === "konsultasi" && (
                 <div className="space-y-4">
                   <div className="flex justify-between items-center pb-4 border-b border-slate-800">

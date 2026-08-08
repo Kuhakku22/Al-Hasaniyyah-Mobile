@@ -6,6 +6,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { ThemedText } from '@/components/themed-text';
 import { supabase } from '@/lib/supabase';
+import { detectProvinceCode, generateStandardNIA } from '@/lib/nia';
+import { getCloudVerifiedAlumni, getCloudPendingRegistrations } from '@/lib/cloudSync';
 
 export default function LoginScreen() {
   const [nama, setNama] = useState('');
@@ -41,23 +43,58 @@ export default function LoginScreen() {
         return;
       }
 
-      // Query database alumni berdasarkan Nomor Induk Anggota (NIA)
-      const { data, error } = await supabase
+      // 1. Cek dari Cloud Verified Store Real-Time (JSONBlob)
+      const cloudVerified = await getCloudVerifiedAlumni();
+      const matchedCloudVerified = cloudVerified.find(
+        (a) =>
+          (a.nomor_id_unik && a.nomor_id_unik.trim() === cleanId) ||
+          (a.nomor_id_unik && a.nomor_id_unik.replace(/\D/g, '') === cleanId.replace(/\D/g, ''))
+      );
+
+      if (matchedCloudVerified) {
+        const nameInDb = (matchedCloudVerified.nama_lengkap || '').toLowerCase().trim();
+        const inputName = cleanNama.toLowerCase();
+        const isNameMatched = nameInDb === inputName || nameInDb.includes(inputName) || inputName.includes(nameInDb);
+
+        if (!isNameMatched) {
+          Alert.alert('Login Gagal', 'Nama Alumni dan Nomor Induk Anggota (NIA) tidak cocok.');
+          return;
+        }
+
+        await AsyncStorage.setItem('userToken', matchedCloudVerified.id);
+        await AsyncStorage.setItem('userProfile', JSON.stringify(matchedCloudVerified));
+        Alert.alert('Login Berhasil', `Selamat datang, ${matchedCloudVerified.nama_lengkap}!`);
+        router.replace('/(tabs)/home');
+        return;
+      }
+
+      // 2. Cek dari Cloud Pending Store Real-Time
+      const cloudPending = await getCloudPendingRegistrations();
+      const matchedCloudPending = cloudPending.find(
+        (a) =>
+          (a.nomor_id_unik && a.nomor_id_unik.trim() === cleanId) ||
+          (a.nomor_id_unik && a.nomor_id_unik.replace(/\D/g, '') === cleanId.replace(/\D/g, ''))
+      );
+
+      if (matchedCloudPending) {
+        Alert.alert('Login Pending', 'Akun Anda sedang dalam proses verifikasi oleh pengurus pusat.');
+        return;
+      }
+
+      // 3. Fallback Database Supabase
+      const { data } = await supabase
         .from('alumni')
         .select('*')
         .eq('nomor_id_unik', cleanId)
         .single();
 
-      if (error || !data) {
+      if (!data) {
         Alert.alert('Login Gagal', 'Nomor Induk Anggota (NIA) tidak ditemukan.');
         return;
       }
 
-      // Verifikasi kecocokan Nama Alumni (Case-Insensitive)
       const nameInDb = (data.nama_lengkap || '').toLowerCase().trim();
       const inputName = cleanNama.toLowerCase();
-
-      // Periksa apakah nama yang diinputkan ada kecocokan dengan data di DB
       const isNameMatched = nameInDb === inputName || nameInDb.includes(inputName) || inputName.includes(nameInDb);
 
       if (!isNameMatched) {
@@ -76,7 +113,7 @@ export default function LoginScreen() {
         router.replace('/(tabs)/home');
       }
     } catch (e: any) {
-      Alert.alert('Error', e.message);
+      Alert.alert('Error', e.message || 'Terjadi kesalahan sistem.');
     } finally {
       setLoading(false);
     }
