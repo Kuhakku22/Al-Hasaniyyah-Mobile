@@ -15,8 +15,20 @@ export interface PendingRegistration {
   created_at: string;
 }
 
+// In-Memory Cache untuk mencegah "jedag-jedug" akibat HTTP Rate Limiting
+let cachedPending: PendingRegistration[] = [];
+let cachedVerified: PendingRegistration[] = [];
+let lastPendingFetch = 0;
+let lastVerifiedFetch = 0;
+const CACHE_TTL = 3000; // 3 detik TTL cache
+
 // 1. Ambil seluruh data pendaftaran pending dari Cloud
 export async function getCloudPendingRegistrations(): Promise<PendingRegistration[]> {
+  const now = Date.now();
+  if (now - lastPendingFetch < CACHE_TTL && cachedPending.length > 0) {
+    return cachedPending;
+  }
+
   try {
     const res = await fetch(PENDING_BLOB_URL, {
       cache: "no-store",
@@ -25,22 +37,26 @@ export async function getCloudPendingRegistrations(): Promise<PendingRegistratio
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data)) {
+        cachedPending = data;
+        lastPendingFetch = now;
         return data;
       }
     }
   } catch (err) {
     console.warn("Error fetching cloud pending registrations:", err);
   }
-  return [];
+  return cachedPending;
 }
 
 // 2. Tambahkan pendaftaran pending baru ke Cloud
 export async function addCloudPendingRegistration(newReg: PendingRegistration): Promise<boolean> {
   try {
     const currentList = await getCloudPendingRegistrations();
-    // Deduplikasi berdasarkan nomor_hp
     const filtered = currentList.filter((item) => item.nomor_hp !== newReg.nomor_hp);
     const updated = [newReg, ...filtered].slice(0, 100);
+
+    cachedPending = updated;
+    lastPendingFetch = Date.now();
 
     const putRes = await fetch(PENDING_BLOB_URL, {
       method: "PUT",
@@ -64,6 +80,9 @@ export async function removeCloudPendingRegistration(phone: string): Promise<boo
     const currentList = await getCloudPendingRegistrations();
     const updated = currentList.filter((item) => item.nomor_hp !== phone && item.id !== phone);
 
+    cachedPending = updated;
+    lastPendingFetch = Date.now();
+
     const putRes = await fetch(PENDING_BLOB_URL, {
       method: "PUT",
       headers: {
@@ -82,6 +101,11 @@ export async function removeCloudPendingRegistration(phone: string): Promise<boo
 
 // 4. Ambil seluruh alumni terverifikasi dari Cloud
 export async function getCloudVerifiedAlumni(): Promise<PendingRegistration[]> {
+  const now = Date.now();
+  if (now - lastVerifiedFetch < CACHE_TTL && cachedVerified.length > 0) {
+    return cachedVerified;
+  }
+
   try {
     const res = await fetch(VERIFIED_BLOB_URL, {
       cache: "no-store",
@@ -90,13 +114,15 @@ export async function getCloudVerifiedAlumni(): Promise<PendingRegistration[]> {
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data)) {
+        cachedVerified = data;
+        lastVerifiedFetch = now;
         return data;
       }
     }
   } catch (err) {
     console.warn("Error fetching cloud verified alumni:", err);
   }
-  return [];
+  return cachedVerified;
 }
 
 // 5. Tambahkan alumni terverifikasi baru ke Cloud
@@ -105,6 +131,9 @@ export async function addCloudVerifiedAlumni(verifiedItem: PendingRegistration):
     const currentList = await getCloudVerifiedAlumni();
     const filtered = currentList.filter((item) => item.nomor_hp !== verifiedItem.nomor_hp && item.nomor_id_unik !== verifiedItem.nomor_id_unik);
     const updated = [verifiedItem, ...filtered].slice(0, 500);
+
+    cachedVerified = updated;
+    lastVerifiedFetch = Date.now();
 
     const putRes = await fetch(VERIFIED_BLOB_URL, {
       method: "PUT",

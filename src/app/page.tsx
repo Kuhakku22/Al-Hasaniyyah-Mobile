@@ -137,7 +137,7 @@ export default function AdminPortal() {
     sessionStorage.removeItem("adminAuth");
   };
 
-  // Fetch data Real-time Cloud Store + API + LocalStorage + Supabase
+  // Fetch data Stabil Tanpa "Jedag-Jedug" (Accumulator Map + Smart Merging)
   const fetchData = async () => {
     try {
       // 1. Ambil pendaftar dari Global Cloud Store (Pending & Verified)
@@ -168,45 +168,57 @@ export default function AdminPortal() {
         if (alumniData) dbList = alumniData;
       } catch (err) {}
 
-      const mergedList: Alumni[] = [];
-      const seenPhones = new Set<string>();
+      setAlumni((prevList) => {
+        const alumniMap = new Map<string, Alumni>();
 
-      // 1. Alumni Terverifikasi dari Cloud Store di urutan PALING ATAS
-      cloudVerified.forEach((v) => {
-        if (v.nomor_hp && !seenPhones.has(v.nomor_hp)) {
-          seenPhones.add(v.nomor_hp);
-          mergedList.push({
-            ...v,
-            status_verifikasi: "verified",
-          });
-        }
+        // 1. Masukkan data mock awal
+        MOCK_ALUMNI.forEach((a) => {
+          if (a.nomor_hp) alumniMap.set(a.nomor_hp, a);
+        });
+
+        // 2. Pertahankan data state sebelumnya agar tidak berkedip (no flicker)
+        prevList.forEach((item) => {
+          if (item.nomor_hp) alumniMap.set(item.nomor_hp, item);
+        });
+
+        // 3. Masukkan data DB Supabase
+        dbList.forEach((a) => {
+          if (a.nomor_hp) alumniMap.set(a.nomor_hp, a);
+        });
+
+        // 4. Masukkan data API Vercel
+        apiList.forEach((p) => {
+          if (p.nomor_hp) {
+            const existing = alumniMap.get(p.nomor_hp);
+            if (!existing || existing.status_verifikasi !== "verified") {
+              alumniMap.set(p.nomor_hp, p);
+            }
+          }
+        });
+
+        // 5. Masukkan pendaftar pending cloud jika belum terverifikasi
+        cloudPendings.forEach((p) => {
+          if (p.nomor_hp && !verifiedPhones.has(p.nomor_hp)) {
+            const existing = alumniMap.get(p.nomor_hp);
+            if (!existing || existing.status_verifikasi !== "verified") {
+              alumniMap.set(p.nomor_hp, p);
+            }
+          }
+        });
+
+        // 6. Masukkan alumni cloud terverifikasi (Selalu menimpa status ke verified)
+        cloudVerified.forEach((v) => {
+          if (v.nomor_hp) {
+            alumniMap.set(v.nomor_hp, {
+              ...v,
+              status_verifikasi: "verified",
+            });
+          }
+        });
+
+        return Array.from(alumniMap.values());
       });
 
-      // 2. Pendaftar Pending dari Global Cloud Store (yang BELUM terverifikasi)
-      cloudPendings.forEach((p) => {
-        if (p.nomor_hp && !verifiedPhones.has(p.nomor_hp) && !seenPhones.has(p.nomor_hp)) {
-          seenPhones.add(p.nomor_hp);
-          mergedList.push(p);
-        }
-      });
-
-      // 3. Data DB Supabase
-      dbList.forEach((a) => {
-        if (a.nomor_hp && !seenPhones.has(a.nomor_hp)) {
-          seenPhones.add(a.nomor_hp);
-          mergedList.push(a);
-        }
-      });
-
-      // 4. Mock data cadangan
-      MOCK_ALUMNI.forEach((a) => {
-        if (a.nomor_hp && !seenPhones.has(a.nomor_hp)) {
-          seenPhones.add(a.nomor_hp);
-          mergedList.push(a);
-        }
-      });
-
-      setAlumni(mergedList);
       setIuran(MOCK_IURAN);
       setInfak(MOCK_INFAK);
       setKonsultasi(MOCK_KONSULTASI);
@@ -217,14 +229,14 @@ export default function AdminPortal() {
     }
   };
 
-  // Polling 1 Detik untuk Realtime Cloud Sync 100%
+  // Polling Stabil 3 Detik (Mencegah Rate-Limit API & Jedag-Jedug UI)
   useEffect(() => {
     if (!isLoggedIn) return;
 
     fetchData();
     const interval = setInterval(() => {
       fetchData();
-    }, 1000);
+    }, 3000);
 
     return () => {
       clearInterval(interval);
@@ -268,7 +280,16 @@ export default function AdminPortal() {
       created_at: new Date().toISOString(),
     };
 
-    // 1. Simpan ke Global Cloud Verified Store 24/7 (Persisten Lintas Perangkat)
+    // Update lokal instan secara optimis agar UI mulus tanpa jedag-jedug
+    setAlumni((prev) =>
+      prev.map((a) =>
+        a.id === id || (phone && a.nomor_hp === phone)
+          ? { ...a, nomor_id_unik: rawNia, status_verifikasi: "verified" }
+          : a
+      )
+    );
+
+    // 1. Simpan ke Global Cloud Verified Store 24/7
     await addCloudVerifiedAlumni(approvedObject).catch(() => {});
 
     // 2. Hapus dari Cloud Pending Store
@@ -287,15 +308,6 @@ export default function AdminPortal() {
         })
         .eq("id", id);
     } catch (e) {}
-
-    // Update lokal instan
-    setAlumni((prev) =>
-      prev.map((a) =>
-        a.id === id || (phone && a.nomor_hp === phone)
-          ? { ...a, nomor_id_unik: rawNia, status_verifikasi: "verified" }
-          : a
-      )
-    );
 
     // Auto buka WhatsApp untuk kirim notifikasi NIA ke Alumni
     if (phone) {
