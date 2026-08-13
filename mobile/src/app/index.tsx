@@ -76,6 +76,15 @@ export default function LoginScreen() {
           angkatan: 2018,
           alamat_domisili: 'Pasuruan Jawa Timur',
         },
+        {
+          id: 'ver-yahya-ilyas',
+          nama_lengkap: 'Yahya Ilyas',
+          nomor_id_unik: '3.35.1518.00008',
+          nomor_hp: '081234567890',
+          status_verifikasi: 'verified',
+          angkatan: 2024,
+          alamat_domisili: 'Pasuruan Jawa Timur',
+        },
         ...cloudVerified,
       ];
 
