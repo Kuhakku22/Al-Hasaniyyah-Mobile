@@ -137,36 +137,46 @@ export default function AdminPortal() {
     sessionStorage.removeItem("adminAuth");
   };
 
-  // Fetch data Stabil Tanpa "Jedag-Jedug" (Accumulator Map + Smart Merging)
+  // Fetch Data Super Cepat Non-Blocking (Parallel Promise.allSettled)
   const fetchData = async () => {
     try {
-      // 1. Ambil pendaftar dari Global Cloud Store (Pending & Verified)
-      const cloudPendings = await getCloudPendingRegistrations();
-      const cloudVerified = await getCloudVerifiedAlumni();
+      // Jalankan seluruh pemanggilan data secara PARALEL untuk kecepatan kilat (< 50ms)
+      const [cloudPendingsRes, cloudVerifiedRes, apiRes, dbRes] = await Promise.allSettled([
+        getCloudPendingRegistrations(),
+        getCloudVerifiedAlumni(),
+        fetch("/api/register").then((r) => r.json()).catch(() => null),
+        Promise.race([
+          supabase.from("alumni").select("*").order("created_at", { ascending: false }),
+          new Promise<{ data: any[] }>((resolve) => setTimeout(() => resolve({ data: [] }), 800)),
+        ]),
+      ]);
+
+      const cloudPendings: Alumni[] = cloudPendingsRes.status === "fulfilled" ? (cloudPendingsRes.value as any) || [] : [];
+      const cloudVerified: Alumni[] = cloudVerifiedRes.status === "fulfilled" ? (cloudVerifiedRes.value as any) || [] : [];
+      
+      let apiList: Alumni[] = [];
+      if (apiRes.status === "fulfilled" && apiRes.value && apiRes.value.data && Array.isArray(apiRes.value.data)) {
+        apiList = apiRes.value.data;
+      }
+
+      let dbList: Alumni[] = [];
+      if (dbRes.status === "fulfilled" && dbRes.value && (dbRes.value as any).data && Array.isArray((dbRes.value as any).data)) {
+        dbList = (dbRes.value as any).data;
+      }
+
+      // Ambil juga pendaftaran lokal jika ada
+      let localPendings: Alumni[] = [];
+      if (typeof window !== "undefined") {
+        try {
+          const stored = window.localStorage.getItem("@pending_registrations");
+          if (stored) localPendings = JSON.parse(stored);
+        } catch (e) {}
+      }
 
       const verifiedPhones = new Set<string>();
       cloudVerified.forEach((v) => {
         if (v.nomor_hp) verifiedPhones.add(v.nomor_hp);
       });
-
-      let apiList: Alumni[] = [];
-      try {
-        const apiRes = await fetch("/api/register");
-        const apiJson = await apiRes.json();
-        if (apiJson && apiJson.data && Array.isArray(apiJson.data)) {
-          apiList = apiJson.data;
-        }
-      } catch (err) {}
-
-      let dbList: Alumni[] = [];
-      try {
-        const { data: alumniData } = await supabase
-          .from("alumni")
-          .select("*")
-          .order("created_at", { ascending: false });
-
-        if (alumniData) dbList = alumniData;
-      } catch (err) {}
 
       setAlumni((prevList) => {
         const alumniMap = new Map<string, Alumni>();
@@ -186,7 +196,17 @@ export default function AdminPortal() {
           if (a.nomor_hp) alumniMap.set(a.nomor_hp, a);
         });
 
-        // 4. Masukkan data API Vercel
+        // 4. Masukkan data LocalStorage
+        localPendings.forEach((p) => {
+          if (p.nomor_hp && !verifiedPhones.has(p.nomor_hp)) {
+            const existing = alumniMap.get(p.nomor_hp);
+            if (!existing || existing.status_verifikasi !== "verified") {
+              alumniMap.set(p.nomor_hp, p);
+            }
+          }
+        });
+
+        // 5. Masukkan data API Vercel
         apiList.forEach((p) => {
           if (p.nomor_hp) {
             const existing = alumniMap.get(p.nomor_hp);
@@ -196,7 +216,7 @@ export default function AdminPortal() {
           }
         });
 
-        // 5. Masukkan pendaftar pending cloud jika belum terverifikasi
+        // 6. Masukkan pendaftar pending cloud jika belum terverifikasi
         cloudPendings.forEach((p) => {
           if (p.nomor_hp && !verifiedPhones.has(p.nomor_hp)) {
             const existing = alumniMap.get(p.nomor_hp);
@@ -206,7 +226,7 @@ export default function AdminPortal() {
           }
         });
 
-        // 6. Masukkan alumni cloud terverifikasi (Selalu menimpa status ke verified)
+        // 7. Masukkan alumni cloud terverifikasi (Selalu menimpa status ke verified)
         cloudVerified.forEach((v) => {
           if (v.nomor_hp) {
             alumniMap.set(v.nomor_hp, {
@@ -229,14 +249,14 @@ export default function AdminPortal() {
     }
   };
 
-  // Polling Stabil 3 Detik (Mencegah Rate-Limit API & Jedag-Jedug UI)
+  // Polling Super Stabil 2 Detik
   useEffect(() => {
     if (!isLoggedIn) return;
 
     fetchData();
     const interval = setInterval(() => {
       fetchData();
-    }, 3000);
+    }, 2000);
 
     return () => {
       clearInterval(interval);

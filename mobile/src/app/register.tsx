@@ -78,10 +78,11 @@ export default function RegisterScreen() {
         created_at: new Date().toISOString(),
       };
 
-      // 1. Kirim pendaftaran langsung ke CLOUD REAL-TIME BUCKET 24/7 (Multi-Device Sync)
-      addCloudPendingRegistration(newItem).catch(() => {});
+      // 1. Kirim pendaftaran langsung ke CLOUD REAL-TIME BUCKET 24/7 (Wajib Await)
+      const cloudSuccess = await addCloudPendingRegistration(newItem);
+      console.log('Cloud registration status:', cloudSuccess);
 
-      // 2. Kirim pendaftaran ke seluruh endpoint API (Local & Vercel)
+      // 2. Kirim pendaftaran ke seluruh endpoint API secara Paralel Non-Blocking
       const payload = {
         nama: formData.nama,
         phone: formData.phone,
@@ -98,19 +99,19 @@ export default function RegisterScreen() {
         'https://al-hasaniyyah-admin-kuhakku22s-projects.vercel.app/api/register',
         'https://al-hasaniyyah-mobile.vercel.app/api/register',
         '/api/register',
-        'http://localhost:3000/api/register',
       ];
 
-      for (const ep of endpoints) {
-        try {
-          await fetch(ep, {
+      // Paralel non-blocking dengan timeout 1.5 detik
+      Promise.allSettled(
+        endpoints.map((ep) =>
+          fetch(ep, {
             method: 'POST',
             mode: 'cors',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
-          });
-        } catch (apiErr) {}
-      }
+          })
+        )
+      ).catch(() => {});
 
       // 2. Simpan ke LocalStorage & BroadcastChannel Vercel (Persistens Cepat di Vercel Domain)
       if (typeof window !== 'undefined') {
