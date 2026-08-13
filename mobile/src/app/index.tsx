@@ -61,10 +61,10 @@ export default function LoginScreen() {
         {
           id: 'ver-ahmad-ali',
           nama_lengkap: 'Ahmad Ali',
-          nomor_id_unik: '3.35.1518.00003',
-          nomor_hp: '081299993333',
+          nomor_id_unik: '3.35.1426.00007',
+          nomor_hp: '081394644981',
           status_verifikasi: 'verified',
-          angkatan: 2018,
+          angkatan: 2025,
           alamat_domisili: 'Pasuruan Jawa Timur',
         },
         {
