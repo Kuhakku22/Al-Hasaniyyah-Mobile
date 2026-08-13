@@ -1,265 +1,204 @@
--- Seed Data for Al Hasaniyyah Database
-
--- Clean existing data (optional, but good for clean seed)
-TRUNCATE public.polling_votes CASCADE;
-TRUNCATE public.polling_options CASCADE;
-TRUNCATE public.polling_questions CASCADE;
-TRUNCATE public.event_peserta CASCADE;
-TRUNCATE public.event CASCADE;
-TRUNCATE public.laporan_keuangan CASCADE;
-TRUNCATE public.produk_marketplace CASCADE;
-TRUNCATE public.transaksi_infak CASCADE;
-TRUNCATE public.iuran_wajib CASCADE;
-TRUNCATE public.konsultasi_saran CASCADE;
-TRUNCATE public.alumni CASCADE;
-
--- Insert Alumni
--- 1. Ahmad Ali (Mode Uji Coba / Verified)
-INSERT INTO public.alumni (id, nomor_id_unik, nama_lengkap, email, nomor_hp, angkatan, alamat_domisili, provinsi, kota, pekerjaan, bidang_usaha, status_verifikasi)
-VALUES (
-    '00000000-0000-0000-0000-000000000000',
-    '123456',
-    'Ahmad Ali',
-    'ahmad.ali@example.com',
-    '081234567890',
-    2020,
-    'Pondok Pesantren Dalwa',
-    'Jawa Timur',
-    'Pasuruan',
-    'Wiraswasta',
-    'Perdagangan',
-    'verified'
-);
-
--- 2. Alumni Lain (Verified)
-INSERT INTO public.alumni (id, nomor_id_unik, nama_lengkap, email, nomor_hp, angkatan, alamat_domisili, provinsi, kota, pekerjaan, bidang_usaha, status_verifikasi)
-VALUES 
-(
-    '11111111-1111-1111-1111-111111111111',
-    '1023001',
-    'Ahmad Baidlowi',
-    'baidlowi@example.com',
-    '081299991111',
-    2018,
-    'Kec. Bangil',
-    'Jawa Timur',
-    'Pasuruan',
-    'Guru / Pendidik',
-    'Pendidikan',
-    'verified'
-),
-(
-    '22222222-2222-2222-2222-222222222222',
-    '1023002',
-    'M. Zarkasyi',
-    'zarkasyi@example.com',
-    '081299992222',
-    2015,
-    'Kec. Pontianak Selatan',
-    'Kalimantan Barat',
-    'Pontianak',
-    'Pengusaha Kuliner',
-    'F&B',
-    'verified'
-),
-(
-    '33333333-3333-3333-3333-333333333333',
-    '1023003',
-    'Fathur Rahman',
-    'fathur@example.com',
-    '081299993333',
-    2020,
-    'Kec. Bekasi Barat',
-    'Jawa Barat',
-    'Bekasi',
-    'IT Engineer',
-    'Teknologi',
-    'verified'
-),
-(
-    '44444444-4444-4444-4444-444444444444',
-    '1023004',
-    'Ali Zainal Abidin',
-    'aliza@example.com',
-    '081299994444',
-    2017,
-    'Desa Raci',
-    'Jawa Timur',
-    'Pasuruan',
-    'Dosen',
-    'Pendidikan',
-    'verified'
-);
-
--- 3. Alumni Pending (Menunggu Verifikasi)
-INSERT INTO public.alumni (id, nomor_id_unik, nama_lengkap, email, nomor_hp, angkatan, alamat_domisili, provinsi, kota, pekerjaan, bidang_usaha, status_verifikasi)
-VALUES (
-    '55555555-5555-5555-5555-555555555555',
-    '111111',
-    'Zainal Arifin',
-    'zainal.arifin@example.com',
-    '081233334444',
-    2022,
-    'Kec. Sukun',
-    'Jawa Timur',
-    'Malang',
-    'Wiraswasta',
-    'Logistik',
-    'pending'
-);
-
--- 4. Alumni Rejected (Ditolak)
-INSERT INTO public.alumni (id, nomor_id_unik, nama_lengkap, email, nomor_hp, angkatan, alamat_domisili, provinsi, kota, pekerjaan, bidang_usaha, status_verifikasi)
-VALUES (
-    '99999999-9999-9999-9999-999999999999',
-    '999999',
-    'Syihabuddin',
-    'syihab@example.com',
-    '081255556666',
-    2024,
-    'Kec. Grogol',
-    'DKI Jakarta',
-    'Jakarta Barat',
-    'Karyawan Swasta',
-    'Keuangan',
-    'rejected'
-);
-
-
--- Insert Iuran Wajib (untuk Ahmad Ali / 00000000-0000-0000-0000-000000000000)
-INSERT INTO public.iuran_wajib (id, alumni_id, periode, nominal, status, jatuh_tempo, metode_bayar, paid_at, payment_ref)
-VALUES 
-(
-    'a1b2c3d4-0001-0000-0000-000000000000',
-    '00000000-0000-0000-0000-000000000000',
-    'Agustus 2026',
-    25000.00,
-    'belum_bayar',
-    '2026-08-10',
-    NULL,
-    NULL,
-    NULL
-),
-(
-    'a1b2c3d4-0002-0000-0000-000000000000',
-    '00000000-0000-0000-0000-000000000000',
-    'Juli 2026',
-    25000.00,
-    'lunas',
-    '2026-07-10',
-    'transfer_bank',
-    '2026-07-08 14:30:00+07',
-    'PAY-JULI2026A'
-),
-(
-    'a1b2c3d4-0003-0000-0000-000000000000',
-    '00000000-0000-0000-0000-000000000000',
-    'Juni 2026',
-    25000.00,
-    'lunas',
-    '2026-06-10',
-    'qris',
-    '2026-06-05 09:15:00+07',
-    'PAY-JUNI2026B'
-);
-
-
--- Insert Transaksi Infak (dari Ahmad Ali)
-INSERT INTO public.transaksi_infak (id, alumni_id, kategori, nominal, metode_bayar, status, payment_ref, anonim, pesan, paid_at)
-VALUES 
-(
-    'f1e2d3c4-0001-0000-0000-000000000000',
-    '00000000-0000-0000-0000-000000000000',
-    'beasiswa',
-    100000.00,
-    'qris',
-    'success',
-    'PAY-INFAKB1',
-    false,
-    'Semoga bermanfaat untuk adik-adik santri Dalwa.',
-    '2026-07-05 10:00:00+07'
-),
-(
-    'f1e2d3c4-0002-0000-0000-000000000000',
-    '00000000-0000-0000-0000-000000000000',
-    'infak_umum',
-    50000.00,
-    'transfer_bank',
-    'success',
-    'PAY-INFAKB2',
-    true,
-    'Infak umum hamba Allah.',
-    '2026-07-02 08:30:00+07'
-);
-
-
--- Insert Event / Kegiatan
-INSERT INTO public.event (id, judul, deskripsi, tanggal, lokasi, max_peserta, created_by)
-VALUES 
-(
-    'e1e1e1e1-1111-1111-1111-111111111111',
-    'Silaturahmi Nasional Alumni Dalwa 2026',
-    'Pertemuan akbar seluruh alumni lintas angkatan Pondok Pesantren Darullughah Wadda\'wah untuk mempererat ukhuwah dan sinergi dakwah.',
-    '2026-10-15 08:00:00+07',
-    'Gedung Serbaguna Dalwa 2, Raci, Pasuruan',
-    1000,
-    '00000000-0000-0000-0000-000000000000'
-),
-(
-    'e2e2e2e2-2222-2222-2222-222222222222',
-    'Kajian Kitab Kuning Korda Jabodetabek',
-    'Kajian rutin bulanan membahas kitab Al-Hikam oleh para asatidzah alumni Dalwa di Jabodetabek.',
-    '2026-08-06 19:30:00+07',
-    'Masjid Raya Al-A\'zhom, Tangerang',
-    150,
-    '00000000-0000-0000-0000-000000000000'
-);
-
-
--- Insert Polling / Musyawarah
-INSERT INTO public.polling_questions (id, pertanyaan, is_active)
-VALUES (
-    'p1p1p1p1-1111-1111-1111-111111111111',
-    'Di manakah lokasi yang paling tepat untuk menyelenggarakan Mubes Alumni Dalwa tahun depan?',
-    true
-);
-
-INSERT INTO public.polling_options (id, question_id, pilihan_teks)
-VALUES 
-(
-    '11111111-aaaa-1111-1111-111111111111',
-    'p1p1p1p1-1111-1111-1111-111111111111',
-    'Pondok Pesantren Dalwa Pusat (Bangil)'
-),
-(
-    '22222222-bbbb-2222-2222-222222222222',
-    'p1p1p1p1-1111-1111-1111-111111111111',
-    'Kantor Korda Surabaya'
-),
-(
-    '33333333-cccc-3333-3333-333333333333',
-    'p1p1p1p1-1111-1111-1111-111111111111',
-    'Kantor Korda Jabodetabek (Jakarta)'
-);
-
-
--- Insert Konsultasi & Saran
-INSERT INTO public.konsultasi_saran (id, alumni_id, isi_masukan, status, tanggapan, created_at)
+-- Seed Alumni from DATABASE ALUMNI ALHASANIYAH .docx
+INSERT INTO public.alumni (nomor_id_unik, nama_lengkap, alamat_domisili, angkatan, nomor_hp, status_verifikasi)
 VALUES
-(
-    'c1c1c1c1-1111-1111-1111-111111111111',
-    '00000000-0000-0000-0000-000000000000',
-    'Mohon agar aplikasi ini kedepannya bisa menambahkan fitur notifikasi adzan sesuai wilayah.',
-    'Menunggu Tanggapan',
-    NULL,
-    NOW() - INTERVAL '4 days'
-),
-(
-    'c2c2c2c2-2222-2222-2222-222222222222',
-    '00000000-0000-0000-0000-000000000000',
-    'Bagaimana prosedur pergantian ketua Korda di wilayah Sumatera?',
-    'Ditanggapi',
-    'Prosedur pergantian Korda telah diatur dalam AD/ART Bab IV. Silakan cek menu AD/ART di beranda.',
-    NOW() - INTERVAL '10 days'
-);
-
+('3.11.1821.00010', 'Asep Rasidin Bin TGK. H. Marzuki M', 'Jl Melur No. 22 Cinabang Kab . Simeulue N.A8 ACEH NAD', 2021, '08121983109', 'verified'),
+('3.11.1821.00011', 'Munawwar Kholil Bin Moch. Nasir Isya', 'Darussalam lampoh tuah Grong-Grong - pidie Aceh NAD', 2021, '081371210266', 'verified'),
+('3.11.1821.00012', 'Rafsan Bin Marzuki', 'Darussalam lampoh tuah Grong-Grong - pidie Aceh NAD', 2021, '081360000544', 'verified'),
+('3.11.1821.00013', 'Yarhamra Bin Qamaruzzaman', 'Jl. Simpang Rikir Kec. Bambel Aceh Tenggara - DI. ACEH', 2021, '085270108761', 'verified'),
+('3.11.1821.00014', 'Zul Helmi Bin Idris', 'Darussalam lampoh tuah Grong-Grong - pidie - DI. ACEH', 2021, '081360451099', 'verified'),
+('3.11.1821.00015', 'Zulfan Bin Abubakar Bahar', 'Darussalam lampoh tuah Grong-Grong - pidie - DI. ACEH', 2021, '081360148379', 'verified'),
+('3.19.0508.00016', 'Ibnu Hajar AL Haitami', 'Bangka Blitung', 2021, '085203013507', 'verified'),
+('3.19.0818.00017', 'Ali Mubarok Bin Jamil', 'Jl. Labu Gg. SDN 03 Puding Besar, Kec . Puding Besar, Prov. Bangka Blitung', 2018, '082310085115', 'verified'),
+('3.19.1821.00018', 'A.Mubarok Bin Abdullah', 'Jl. Sungai Liat Pudiang Besar No. 349. Bangka Binang . Bangka 33179', 2021, '08526707284', 'verified'),
+('3.19.1821.00019', 'Ahmad Zuhri Bin Muhammad Faruq', 'Desa Puding Besar Kec . Puding Besar Bangka Blitung', 2021, '081367322094', 'verified'),
+('3.19.1821.00020', 'Ibnu Hajar Khaironi Bin Agus RZ', 'Jl. Sungai Liat Mentok Desa Kayu Besi Rt. 01 No.39 Kec . Puding Besar Bangka Blitung', 2021, '081367364615', 'verified'),
+('3.19.1821.00021', 'Suhaily Bin Jauhar Abdurrahman', 'Desa Zed RT.01/05 Ds. Manda Barat Bangka Blitung', 2021, '081367172701', 'verified'),
+('3.19.1821.00022', 'Supan Adri Bin Supardi', 'Desa Zed RT.01/05 Ds. Manda Barat Bangka Blitung', 2021, '085268437355', 'verified'),
+('3.21.1821.00023', 'Muhammad Faqihuddin Bin H.Abdus Syakur', 'Gesing Rt. 03 Rw . 04 Desa Lebo Kel. Lebo Kec . Griysing Kab . Batam BATAM', 2021, '081325495845', 'verified'),
+('3.14.0410.00024', 'Abdul Rouf', 'Jl. Suka Jadi 3 No. 17 Desa Balai Makam Riau', 2010, '082390911517', 'verified'),
+('3.14.0508.00025', 'M. Saidul Khoir Bin Wagimun', 'Rawang Makmur, Rt.07, Kel.Gufon Panjang, Kec . Bukit Kapur, Kab . Bengkalis . Kota. Damota, Riau 28852', 2021, '081365739579', 'verified'),
+('3.14.1821.00026', 'Muhammad Ghozali', 'Jl. Suka Jadi 3 Gg. Hang Jabat No.8 B Duri Riau', 2021, '081365580901', 'verified'),
+('3.14.0915.00027', 'Qodhy ’ Iyadh', 'Jl. Sabilal Muhtadin Tembilahan Riau - RIAU', 2015, '085330963220', 'verified'),
+('3.14.1821.00028', 'Syukri Wahidi Bin Masri Achmad', 'Simpang 4 Jembatan Bendi RM ,” Selera Anda”Kuantah Singing( Kuasing Riau) RIAU', 2021, '085265812308', 'verified'),
+('3.14.1821.00029', 'Wahyudi Arimbowo Bin Mistam', 'Ds.Beringin Indah, Rt. 04/04 Kec.Pangkalan Kuras, Kab . Pelalawaw - RIAU', 2021, '08137146019', 'verified'),
+('3.15.1821.00030', 'A.Ikhwan Afdhali Bin M. Amin SKM.M,Kes', 'Jl. Kapt.Patimura Irg. Hidayah RT.22 No 56 Rawa Sari Kota Baru. Jambi', 2021, '081366079550', 'verified'),
+('3.15.1821.00031', 'Abdussalam Jambi', 'Jl. Bhayangkara RT. 7 Kuala Tungkal Jambi', 2021, '085266086387', 'verified'),
+('3.15.9697.00032', 'Achmad Makki', 'Jambi', 1997, '081368643313', 'verified'),
+('3.15.0106.00033', 'Ahmad Sofyan Attsauri', 'Jambi', 2006, '08127875120', 'verified'),
+('3.15.1821.00034', 'Ahmadi Al Habsyi', 'Jl. KH. M. Zen No. 19 RT 07/RW 19 Kel. Arab Melayu Kec . Pelayangan Jambi', 2021, '085381810495', 'verified'),
+('3.15.1821.00035', 'Aminullah Bin H. M. Amran', 'Sei Saren, Rt. 01 Kec . Bramitan Kab . Tan Jabbar Jambi', 2021, '081367732994', 'verified'),
+('3.15.0410.00036', 'Kurniawan Syarief H', 'Jl. Natuna No. 38 RT 3 Jelutung Jambi', 2010, '081994992324', 'verified'),
+('3.15.8895.00037', 'M. Azmi Al Jufri', 'Jl. Raden Pamula Rt 04 Kasang Jambi', 1995, '085381200055', 'verified'),
+('3.15.0013.00038', 'M. Fadly Habibie', 'Jl. Pelabuhan No. 86 Rt 18 Kuala Tungkal Jambi', 2013, '082327727600', 'verified'),
+('3.15.0114.00039', 'M. Fathil', 'Jambi', 2014, '081913442333', 'verified'),
+('3.15.1821.00040', 'M. Ja’far Haidar', 'Jl. Ponten Asyafi’iyyah Ds. Pauh Kec.Pauh Jambi', 2021, '08127206553', 'verified'),
+('3.15.1821.00041', 'M. Ja’far Hasdar Bin K.H. Abd. Qodir', 'Ponpes Asyafi’iyyah Desa Patuh Kec . Pauh Kab . Sarolangi Jambi', 2021, '081366775277', 'verified'),
+('3.15.0104.00042', 'Muhammad Abror', 'Jambi SUMATRA', 2004, '082185920888', 'verified'),
+('3.15.1821.00043', 'Saddam Husen Bin H. Tamrin Awang', 'Ebing Tinggi KM. 04 Kec . Tungkal Ulu Kab . Tanjung Jatung Barat Jambi', 2021, '08521340780', 'verified'),
+('3.15.1821.00044', 'Sy. Munthasir Billah Bin Hb. Qosim Baraqbah', 'Kel. Arab Melayu RT 07/03 Jambi', 2021, '08163200267', 'verified'),
+('3.16.1821.00045', 'A Mustanjid Bin H. Nailul Abrori', 'Ds. M. Jaya, kec . Rambang jangku , kab , muaro enim , sumsel', 2021, '08153568719', 'verified'),
+('3.16.1118.00046', 'Ahmad Fadhil Bin Muhammad Assegaf', 'Jl. Kh Azhari, 14 Ulu Palembang Rt 02 (Kampung Arab “ ulv ”) SUMSEL', 2018, '081953755992', 'verified'),
+('3.16.9403.00047', 'Hamid Bin Ahmad Baraqbah', 'Jl. Dr. Muhammad Isa Gg. Sikam 8 Ilir No. 48 RT 25 Palembang SUMSEL', 2003, '081271493690', 'verified'),
+('3.16.1821.00048', 'Hefriansyah Bin Khabadi', 'Ds. Tanjung Laga, Kec . Tanjung Lubuk , Kab . Ogan Komring Ilir, Prov. Sum-Sel SUMSEL', 2021, '081367512976', 'verified'),
+('3.16.9598.00049', 'Muhammed bin Husein', 'Jl. KH. Azhari No. 200 RT 54. Rw '' 01 PALEMBANG SUMSEL', 2021, '087822284846', 'verified'),
+('3.16.1821.00050', 'Muhammad Syarif Bin Zainuri', 'K.H. Azhari 13.ULU RT.01/04 Palembang SUMSEL', 2021, '081367053040', 'verified'),
+('3.16.9702.00051', 'Muhamınmad bin Tholib A l Mad i hij', 'Jl. KH. Azhari 7 Ulu Tangga Raja SUMSEL', 2002, '081322336142', 'verified'),
+('3.35.0000.00052', 'Mustafa Al Madihij', 'Indonesia', 2000, '087722006974', 'verified'),
+('3.16.0413.00053', 'Muzaki Ridwan', 'Jl. KH. Azhari 13 Ulu Gg. Agung I No. 40 RT 3 SUMSEL', 2013, '087846012306', 'verified'),
+('3.16.9501.00054', 'Nizar', 'Jl. KH. Anshori NO. S RT 2/RW 1 Kel. 14 Hulu Palembang SUMSEL', 2001, '081271572757', 'verified'),
+('3.16.0918.00055', 'Sirajuddin Hanif', 'Pejar Bulan SDU Muara Pilau SumSel', 2018, '083833796971', 'verified'),
+('3.18.8900.00056', 'Abdul Aziz muslim M Ridho', 'Lampung', 2000, '08228252965', 'verified'),
+('3.18.9297.00057', 'Ali Ridho AL Idrus', 'Jl. Raya Hayam wuruk No. 63 Kampung Sawalama Tanjung Karang Lampung', 1997, '08177974844', 'verified'),
+('3.18.0312.00058', 'Rahmad Sahel', 'Jl. Gotong Royong No. 42 9 B Kota Bumi Lampung Utara', 2012, '08534554429', 'verified'),
+('3.35.0007.00059', 'A. Faris Setiawan', 'Visma Harapan Ii Blbk Hi No 38', 2007, '082213681970', 'verified'),
+('3.35.9807.00060', 'Abd Hannan', 'Desa Setupatok , Mudi Rt/ Rw 03/06', 2007, '08522347799', 'verified'),
+('3.35.1821.00061', 'Abdillah Alaydrus', 'Gg. Banjar No 35 Sedane Empang', 2021, '087872009220', 'verified'),
+('3.35.1821.00062', 'Abduh Maulana', 'Jl. Taman Setari Rt. 01/03 Cibeureum Cisarua', 2021, '085880221054', 'verified'),
+('3.35.9913.00063', 'Abdul Hakim Ali', 'Celeduk', 2013, '083823234545', 'verified'),
+('3.35.8293.00064', 'Abdullah Vad’ak', 'Pengasinan Rawa Lumbu', 1993, '08218270971', 'verified'),
+('3.35.1821.00065', 'Abdur Rohim', 'Jl. Lap Bola Rt. 01/02', 2021, '085285549163', 'verified'),
+('3.32.9906.00066', 'Abdurrahman', 'Jl. Paseh 153 Tasikmalaya 46125', 2006, '085222837157', 'verified'),
+('3.35.9602.00067', 'Abu Bakar', 'Jl. Raya Kanjati No 255', 2002, '087828282832', 'verified'),
+('3.35.9504.00068', 'Achmad Bin Mustofa Assegaf', 'Kampung 2 Jl. Sawo 2 Jaka Sampurna', 2004, '087877000707', 'verified'),
+('3.35.9687.00069', 'Achmad Bin Zen Al Kaff', 'Jl. Raya Puncak Desa Cibereb', 1987, '081510266630', 'verified'),
+('3.35.9705.00070', 'Achnad Mufakhir Hamdi', 'Tambun Selatan', 2005, '085781880929', 'verified'),
+('3.35.0315.00071', 'Achmad Muhajir Bin Syihab', 'Jl. Gg. Ojek', 2015, '081937050042', 'verified'),
+('3.35.9808.00072', 'Achma Sadad MB', 'Indonesia', 2008, '08161844872', 'verified'),
+('3.35.0515.00073', 'Achmad Sulaiman', 'Jl. Rahadi Usman Rt. 15 Rw . 03 Desa Sui Jawi', 2015, '082330003464', 'verified'),
+('3.35.1011.00074', 'Adam Reza', 'Kedung Badak Rt/ Rw 07/01', 2011, '082518347118', 'verified'),
+('3.35.1821.00075', 'Ahmad Fauzi', 'Telajung', 2021, '087754578672', 'verified'),
+('3.35.1821.00076', 'Ahmad Mustofa', 'Indonesia', 2021, '082214298829', 'verified'),
+('3.35.0005.00077', 'Ahmad Syafiq Al- Muthohhar', 'Jl Citayem Raya', 2005, '089662316456', 'verified'),
+('3.35.9401.00078', 'Ali Al Uraidi Al Haddad', 'Kamp. Bulau Rata Pd Rajek Rt. 02/08 Masjid Al Hawi', 2001, '085694444151', 'verified'),
+('3.35.9806.00079', 'Alwi Bin Abu Bakar Al-Haddad', 'Jl. H. Wangsah No.1 Rt/ Rw 01/13 Jatimakmur Pondok Gede', 2006, '085888842003', 'verified'),
+('3.35.0206.00080', 'Ari Mubarok', 'Baranang Siang', 2006, '085715454255', 'verified'),
+('3.35.1115.00081', 'Arif Rahman', 'Indonesia', 2015, '08156100663', 'verified'),
+('3.35.9912.00082', 'Bahar', 'Pangkalan Bambu', 2012, '081334235689', 'verified'),
+('3.35.0108.00083', 'Cecep Abdurrahman Siddiq', 'Dsn . Kebon Kelapa DS. Ranca Mulya Rt/ Rw 01/05', 2008, '081320320156', 'verified'),
+('3.35.0207.00084', 'Deden Sufyan', 'Jl. Kayumanis / Dr. Nurdin Rt/ Rw 02/01', 2007, '089603996775', 'verified'),
+('3.35.0112.00085', 'Fakhruddin', 'Ciehelut Barosiang', 2012, '085774126686', 'verified'),
+('3.35.0411.00086', 'Fariyzal Ahmad', 'Indonesia', 2011, '085775410701', 'verified'),
+('3.35.0008.00087', 'Fikri Ba’bud', 'Indonesia', 2008, '081911900700', 'verified'),
+('3.35.9604.00088', 'Firman Hamdani', 'Jl. Pemuda No. 22 Rt/ Rw 04/13 Keranji', 2004, '087836380016', 'verified'),
+('3.35.0111.00089', 'Hasanuddin', 'Jl. Jagung Ujung Rt. 05 Rw . 09', 2011, '082385989100', 'verified'),
+('3.35.0010.00090', 'Idhom', 'Indonesia', 2010, '081321101246', 'verified'),
+('3.35.8591.00091', 'Idrus Bin Hasan Alqadri', 'Jl. Kembang Lio Rt 3 Rw 3', 1991, '081219167568', 'verified'),
+('3.35.0912.00092', 'Kholillurrahman Hakam', 'Indonesia', 2012, '085333334566', 'verified'),
+('3.35.0612.00093', 'Lutfi Bin Yahya', 'Jatibening Rt/ Rw 01/07', 2012, '082299646489', 'verified'),
+('3.35.0811.00094', 'Luthfi Riyandanu', 'Kaum Tengan', 2011, '082297297538', 'verified'),
+('3.35.8687.00095', 'Moh. Abdul Rozak', 'Jl. Bajang Sari Perum . Taman Ria Agung Indah', 1987, '0818753017', 'verified'),
+('3.35.1821.00096', 'Moh. Agus Salim', 'Rancakadu 01/08 Desa Babakan', 2021, '085759893866', 'verified'),
+('3.35.0811.00097', 'Moh. Daimi Muzaki', 'Kp . Cipicung Rt 10/04 Desa Mekarsan', 2011, '087770807933', 'verified'),
+('3.35.0513.00098', 'Moh. Fariduddin', 'Cijayanti', 2013, '081937185770', 'verified'),
+('3.35.9304.00099', 'Moh. Jadid Assegaf', 'Jl. Cisarua Puncak', 2004, '085880334242', 'verified'),
+('3.35.0003.00100', 'Moh. Nawani', 'Indonesia', 2003, '08223311556', 'verified'),
+('3.35.9805.00101', 'Moh. Nizar', 'Jl. Taman Pagelaran Rt/ Rw 07/10', 2005, '081282006450', 'verified'),
+('3.35.9910.00102', 'Moh. Ridho Bin Fahmi BSA', 'Jl. Gg. Ojek', 2010, '081958113105', 'verified'),
+('3.35.0308.00103', 'Moh. Salman Al Farisi', 'Bintara Jaya Rt 02/09 No. 42', 2008, '087871288183', 'verified'),
+('3.32.0414.00104', 'Moh. Sibghatullah', 'Telaga Murni Cikarang Barat Bekasi', 2014, '085791505258', 'verified'),
+('3.35.9395.00105', 'Moh. Yusron', 'Jl. Raya Mauk, Kamp Selatan Tanggerang', 1995, '085313844222', 'verified'),
+('3.35.0310.00106', 'Moh. Yusuf', 'Jl. H. Romli Rt/ Rw . 02/03', 2010, '089653975991', 'verified'),
+('3.35.9404.00107', 'Moh. Zaidi Baraqbah', 'Jl. Gg. Ojek', 2004, '081807475998', 'verified'),
+('3.35.9910.00108', 'Moh Zaenal Arifin', 'Indonesia', 2010, '0817164441', 'verified'),
+('3.35.1821.00109', 'Moh Zaki Bin Abdullah Almunawar', 'Dsn Bangkir Parakan Muncang', 2021, '08977719192', 'verified'),
+('3.35.8687.00110', 'Moh Yusuf', 'Indonesia', 1987, '0818898433', 'verified'),
+('3.35.9601.00111', 'Muhammad Bin Alwi Alhaddad', 'Jl. R A Kartini No 52', 2001, '087777787101', 'verified'),
+('3.35.0007.00112', 'Muhammad Hadi Alhabsy', 'Kp . Pamoyanan Rt/ Rw 01/02', 2007, '085781503663', 'verified'),
+('3.35.0510.00113', 'Muhammad Masud', 'Indonesia', 2010, '085723990468', 'verified'),
+('3.35.8999.00114', 'Muhammad Ridho Assegaf', 'Munjul Ponpes Darul Habib', 1999, '081802948116', 'verified'),
+('3.35.0815.00115', 'Nanang Kosyim', 'Indonesia', 2015, '082231703690', 'verified'),
+('3.35.0113.00116', 'Nur Hasan', 'Indonesia', 2013, '08974974138', 'verified'),
+('3.35.9094.00117', 'R H Lutfi Y', 'Indonesia', 1994, '0817775335', 'verified'),
+('3.36.8903.00118', 'Rahmat Rizal', 'Jl. Kota Saru No 43 Rt 03 Rw 16 Kebantenan Jati Asih', 2003, '081806842326', 'verified'),
+('3.35.9800.00119', 'Ridwan Hamdani', 'Kranji', 2000, '081318871346', 'verified'),
+('3.35.9904.00120', 'Ridwan Turmudzi', 'Indonesia', 2004, '081394116668', 'verified'),
+('3.12.1821.00121', 'Safari Muhammad', 'Kp . Rawa Bambu 01/09 Medan Satria Bekasi', 2021, '085310977119', 'verified'),
+('3.35.9804.00122', 'Rudin Badruddin', 'Jl. Puskesmas Conggeang Rt/ Rw 04/02', 2004, '082315461233', 'verified'),
+('3.35.9902.00123', 'Wahyu Abdullah', 'Penyingkiran', 2021, '085223821541', 'verified'),
+('3.35.9497.00124', 'Wahyuddin', 'Indonesia', 1997, '083806333933', 'verified'),
+('3.35.1821.00125', 'Zaenul Arifin', 'Jl. Amaliah Kc. Tipar Rt. 03/04 Ciawi', 2021, '085311223626', 'verified'),
+('3.35.0311.00126', 'Zaenuri', 'Indonesia', 2011, '081313107746', 'verified'),
+('3.31.1821.00127', 'A. Fahrurrozi Bin H.Husein', 'Kel. Ciracas RT007/04 Jl. Raya Poncol Gg Asem. Jakarta Timur', 2021, '081317269627', 'verified'),
+('3.31.1821.00128', 'A. firdaus', 'Jakarta timur Pasar Induk kramat jati Gg. H. said RT 02/ 01 No. 9 kelurahan rambutan', 2021, '08567342173', 'verified'),
+('3.31.1821.00129', 'M Hafidz Attamimi Bin Lutfi Attamimi', 'Jakarta, Jl. lnerbang II Rt. 02/03 No 32 Kel. Kp . Tengah, Kramat Jati, Jakarta Timur JAKARTA', 2021, '0818412499', 'verified'),
+('3.31.1821.00130', 'Sy. Muhammad Yusuf Bin Alwi Bafagih', 'II. Cipinang Besar Selatan Rt.0l Rw10 No 20 Jatinegara la arta Timur JAKARTA', 2021, '08561464001', 'verified'),
+('3.31.0508.00131', 'M. Syafiq Ridho bin Abd. Mutolib Al Idrus', 'Palmerah Barat VI, No.78 Jakarta Barat J AKARTA', 2021, '081317278531', 'verified'),
+('3.31.0918.00132', 'A. Fadhil Nur Fuadi', 'Jakarta Selatan', 2018, '081252231649', 'verified'),
+('3.31.1821.00133', 'A. Nasrullah Bin Hasbullah', 'Jakarta , Jl. Cikoko Raya Rt. 02/01 No. 13 Cikoko , Jakarta Selatan', 2021, '081381340021', 'verified'),
+('3.31.9296.00134', 'Sulaeman', 'Jl. Tebet barat raya l A jakarta selatan JAKARTA', 1996, '08577691111', 'verified'),
+('3.31.1821.00135', 'Syech Sulthanil Hakim Bin Alwi Bin Thahir', 'Jl. Dpr . Suharjo Gg. Sadar RT,008/03 No.26 Manggarai Tebet Jakarta Selatan 12860', 2021, '08567800705', 'verified'),
+('3.31.0508.00136', 'Zainal Abidin bin Abdurrahrnan Alwi Assegaf', 'Jl. Lapangan Ros. Timur III No. 06 Rt. 006/05 Jakarta Selatan 12840 - DKI JAKARTA', 2021, '08567551971', 'verified'),
+('3.31.1821.00137', 'Muhammad Al Jufri Bin Umar Al Jufri', 'Asem Baris Jl. J No. 53 Rt. 08/10 Kebon Baru Tebet Jaksel JAKARTA', 2021, '08170136880', 'verified'),
+('3.31.0508.00138', 'Sy A. Syarif bin Hb. Abu Bakar Alaydrus', 'Jl. Lontar Atas, No. 118 Tanah Abang, Jak-Pus 10230 JAKARTA', 2021, '08129351054', 'verified'),
+('3.31.9507.00139', 'Abdullah arfan', 'Jl. Damai 4 RT 002/02 No. 4 Pet Sel Jakarta', 2007, '0857170004241', 'verified'),
+('3.31.1821.00140', 'Dhiaul Haq Bin Ikhwan Ali', 'Jl. Pahlawan Revolusi . Tanah 80. RT. 07/09 No.31 Klend er Duren Sawit. Jakarta', 2021, '081513571559', 'verified'),
+('3.31.0814.00141', 'M.ridwan', 'J l. Pisangan lama 33 RT 08 / Rw 07 JAKARTA', 2014, '082210385411', 'verified'),
+('3.31.0710.00142', 'Moh. Rifai Andadyo Bin Ahmad Bakhair', 'Kali Pacung wetan Batang RT.01 / 01 Il. Perintis Kemerdekaan Batang Kab . Batang Jakarta', 2021, '08122609629', 'verified'),
+('3.36.0710.00143', 'Ach. Fathurrozi Bin H. Muhammad', 'J l. K.H Ahmad No.49 Desa Sasak Kec . Mauk Tanggerang Banten', 2021, '085693297357', 'verified'),
+('3.33.0508.00144', 'Rizqi Abdillah bin Nasori', 'Debong Wetan - Dukuh Turi, Tega l , Rt.02/02, No.58, JATENG', 2021, '08882610484', 'verified'),
+('3.35.0312.00145', 'Abdul Mu’ti', 'J l . Bumisari praja Gg. 02/10 RT 07 RW 05 Surabaya barat JATIM', 2012, '087856723015', 'verified'),
+('3.35.1821.00146', 'Abdullah SBY', 'Petukangan Tengah No41 surabaya JATIM', 2021, '087771777944', 'verified'),
+('3.35.1821.00147', 'Lutfi rahman AL habsyi', 'JI. Mulyo sari utara IX/24 Surabaya JATIM', 2021, '081938156561', 'verified'),
+('3.35.0006.00148', 'Mas Andik saputra tambak', 'Jl. Kewajan p[ putih , Tambak no 71 Surabaya JATIM', 2006, '085730575115', 'verified'),
+('3.35.0107.00149', 'Muhammad Miftahul Falah', 'Jl. Ketintang barat 1 NO 27 surabaya JATIM', 2007, '085770300117', 'verified'),
+('3.35.1821.00150', 'Sy. Hamzah Bin Muhammad Aljufri', 'Perum Tamasya Ji. Tamasya Viii /4 Waru Sidoarjo Jatim', 2021, '081330782178', 'verified'),
+('3.35.0508.00151', 'Abdurrohim Bin HM Nur Hasan', 'Lor. Gubong Sedarum , Kec . Nguling , Rt.023/10 67185 Pasuruan Jatim', 2021, '08121766249', 'verified'),
+('3.35.1821.00152', 'Hasan Nabil Hassan Bin Nabil Hassan', 'J l . Bader No.22 Gg Melat i Kal i Rejo Bang i l pasuruan JATIM', 2021, '081703385741', 'verified'),
+('3.35.0818.00153', 'Ibnu Hajar', 'Jl . Kakap No.64 RT.6 RW.2 Bangil Pasuruan JATIM', 2018, '085607421201', 'verified'),
+('3.35.9907.00154', 'A. Bilfaqih', 'Jl. Melati 147 patokan kraksan Probolinggo JATIM', 2007, '085222228606', 'verified'),
+('3.35.0810.00155', 'A Abdurrahman Ba''al', 'Jl. Ir juanda 290 kraksan Probolinggo JATIM', 2010, '081298796774', 'verified'),
+('3.35.0407.00156', 'abdul alim', 'Klaseman gendung Probolinggo JATIM', 2021, '081249222333', 'verified'),
+('3.35.8183.00157', 'H. M.Iddris', 'Kerijingan Probolinggo JATIM', 1983, '085234461643', 'verified'),
+('3.35.8389.00158', 'Hasyim Habsyi', 'Jl. Jurowda 35 kraksan Probolinggo JATIM', 1989, '081336740361', 'verified'),
+('3.35.0811.00159', 'M.Faiz mahfudz Bin K.H Drs. Mahfudz', 'Tarokan Banyu Anyar kab.Probolinggo JATIM', 2021, '08155900964', 'verified'),
+('3.35.0710.00160', 'Moh. Alfin Nau£al Bin DRS. Haerus Saleh', 'Desa Sumur Dalam Kec . Besuk Kab . Probolinggo JATIM', 2021, '085232673681', 'verified'),
+('3.35.8997.00161', 'Soleh hasan', 'Jl. lr h juanda RT 01/02 patoakan kraksan Probolinggo JATIM', 1997, '085258619720', 'verified'),
+('3.35.1821.00162', 'A. Hamdin Zainal''ala, Bin HM. Hasyim', 'Jl KH. Wahid Hasyim No.227. Jombang JATIM', 2021, '081331800772', 'verified'),
+('3.35.0005.00163', 'Fathur rozi', 'sumberingin 1/5 sanan kulon Blitar JATIM', 2005, '085655023233', 'verified'),
+('3.35.9201.00164', 'Lutfi Zarkasyih', 'Wonodai Blitar JATIM', 2001, '087756236022', 'verified'),
+('3.35.9802.00165', 'M. rifa''i', 'Ds. Selopuro kec . Selopuro Rt. 02/03 Blitar JATIM', 2002, '082151877382', 'verified'),
+('3.35.9200.00166', 'Yunan Fahruri', 'Gandekan wonodadi Blitar - JATIM', 2000, '081333951313', 'verified'),
+('3.35.0918.00167', '081217438952/ 085854151971', 'Muhammad Ali Murtadho', 2018, '081217438952', 'verified'),
+('3.35.1821.00168', 'Moch. Suhail Bahasuan Bin Zaky Bahasuan', 'Jl. Gubernur Suryo . A:9 MSP. Gresik. JATIM', 2021, '08121732861', 'verified'),
+('3.33.1821.00169', 'Amrullah Hb. Baihaqi Bin Rahmad', 'Dusun Brau Rt. 12 Rw.02 Desa Tegal R e jo Kec . Widang Kab . Tuban 62383 JATIM', 2021, '08121755872', 'verified'),
+('3.35.0508.00170', 'Esa Ferry Irawan Bin Abd . K h oliq', 'Jl . Dean Dles , No.25, Ds. Paciran , Kec . Paciran , Kab . Lamongan . JATIM', 2021, '081330408958', 'verified'),
+('3.35.1821.00171', 'A, Ha s yim As''ary Bin M. Thohir Qusyairi', 'JI. Datuk Ibrahim No 37 Pon-pes As-sidiqi Gien More Banyuwangi JATIM', 2021, '081336515399', 'verified'),
+('3.33.0307.00172', 'A Ubasyir syafaat', 'Blokang Karangdoro tegal sari Banyuwangi JATIM', 2007, '081337353811', 'verified'),
+('3.35.9808.00173', 'M. ali zainal abidin JATIM', 'Jl . Cang ga an TR 3 RW 7 ge nte ng weta n Ba n yuwa n gi JAT I M', 2008, '085280799747', 'verified'),
+('3.35.0508.00174', 'M. Rifqi Bin M Auliya', 'Karang Anyar Rt 14 Rw . 07 Poncokusumo Malang Jatim', 2021, '081555841011', 'verified'),
+('3.35.1821.00175', 'Maulana Ishab Bin Muhlas', 'lember JATlM , Jl. Puger, Rt. 03 Rw . 03 Jambarun Puger, Jember JATIM', 2021, '081358500726', 'verified'),
+('3.35.1821.00176', 'Salman Firdaus MS Bin H.A. Hudaifi Ml', 'RT 01/07 Andong Sari - Tugusari . Bangsal Sari. Jember JATIM', 2021, '08124910059', 'verified'),
+('3.35.9398.00177', '1 08', 'Fauzi Al- Muthohhar', 1998, '0812256110363', 'verified'),
+('3.61.0508.00178', 'M. Qutaibah bin Yusman', 'Jl. Tiang A j i Dsn . Mandor Rt. 07 /II Landak Mandor Pontianak KALBAR', 2021, '081345307357', 'verified'),
+('3.35.9611.00179', 'JI. Prof D r . M. Ya m in og . Ba ru No.12 Pontianak KALB A R', 'Marwan Ptk', 2011, '081333735522', 'verified'),
+('3.61.9096.00180', 'Mundziri', 'Jl. Raya Sungai Limau Rt.03 Rw.04 Kec . Sungai Kunyit Pontianak Kalbar', 1996, '082150443789', 'verified'),
+('3.61.1821.00181', 'Ma''ruf Setio Hanoko Bin Burhan', 'Jl. Hadi Ismail Ds. Sungai Jawi Dsn . Sripnage Rt. 03/02. No. 144kec. Matan Hilir Selatan Kab . Ketapang Kalbar', 2021, '08524525099', 'verified'),
+('3.63.1821.00182', 'Heriyansyah/Ukasyah Bin Jamhir', 'Gamrut Banjarmasin Rt.03/01 Ribang I Kampung Muara Uyah Tabalong Kalsel', 2021, '081349460363', 'verified'),
+('3.63.1821.00183', 'Moch Ihsan Bin H. Rahmadi', 'Ji. Grilya Gg. Bambu RT.09/08 No.19 Banjarmasin KALSEL', 2021, '081368038080', 'verified'),
+('3.63.1821.00184', 'Moch Rizqani HH Bin H. Haryadi', 'Jl. Kuin Selatan RT.05 No.15 Banjarmasin KALSEL', 2021, '0852490957153', 'verified'),
+('3.63.1821.00185', 'Moch. I zhan Bin Johansyah', 'Desa Pjambuang Kec. Sungai Tabuk. Banjamıasin RT.07/02. KALSEL', 2021, '085248111875', 'verified'),
+('3.63.0815.00186', 'Muhammad Maulana Kamal', 'Klayan, BANJARMASIN, KALSEL', 2015, '0822554460919', 'verified'),
+('3.63.1821.00187', 'Ach . Lutfı Bin Baidowi', 'jl. Trans Kalimantan KM 14.900 (Kompi Martapura) Ds. Beringin ‘RT06 Alalak. Barito Kuala KALSEL', 2021, '08125011048', 'verified'),
+('3.63.1821.00188', 'Muhammad yusuf bin M. Said H.A', 'Jl. Trans Kalimantan KM 14.600 Desa Beringin RT 07 Kec. Alalak kab.Barito Kuala KALSEL', 2021, '08125074387', 'verified'),
+('3.35.1821.00189', '051736325/ 08134971 9833', 'M. Harto/A. Mustofa Bin Kormer', 2021, '081349719833', 'verified'),
+('3.63.1821.00190', 'M.Bambang Hr Bin Huzaefah', 'Km 33 JI . Ro Vivi No .09 RT09 /04 Kel . Loktabat Selatan Banjar Ba ru KALSEL', 2021, '08152118392', 'verified'),
+('3.63.1821.00191', 'Moch. Syarif Bin Drs. H. Mastur', 'Ji . Nilam I No .63 Rt .21/09 Komplek Amaco Banjar B a ru . KALSEL', 2021, '081555643191', 'verified'),
+('3.63.0710.00192', 'Athmad Saupi Bin Muhammed', 'Sui Tiang Rt. 18/06 Kec . Cempaka Kab . Banjar Baru Kalsel', 2021, '08565164790', 'verified'),
+('3.63.0710.00193', 'Ahmad Rifai Bin H. Hulwani', 'J l . Kasturi To 33 It 03/02 Pesayangan Martapura Kalsel', 2021, '08125034300', 'verified'),
+('3.63.1821.00194', 'Moh Ali Ridho Bin H. Hairul Bahri', 'Jl. Trans Kaliantan Desa Sungai Pitung , Kec Alalak Batola Kalsel', 2021, '0813495489351', 'verified'),
+('3.63.0310.00195', 'Muhammad Rizki Hidayat', 'Ji. Raya Sadewa No. 47 Komplek Bdp Beruntung Jaya Kel-Sel Kalsel', 2010, '081216008121', 'verified'),
+('3.62.1018.00196', 'rizki Aditya Rahman', 'H Pramuka No 44 Sampit Kalteng', 2018, '081333033066', 'verified'),
+('3.64.0005.00197', 'Luqman Hakim', 'JI. Bung Tomo No 43 RT 11 Set Keledang Samarinda 75131 KALTIM', 2005, '082142348222', 'verified'),
+('3.64.1821.00198', 'Dikha Manda Asrie Bin Mardiono', 'Kutai , Ramggun Sari Rt. 07 K e c, Langgung Bigung Kab . Kutai Barat Kaltim', 2021, '081347794284', 'verified'),
+('3.64.0710.00199', 'M. Zaki Firdaus Bin H. Bahrun Noor', 'Jl. Danaıı Semayang RT. 12 NO.51 Kab . Kutai Kerta Negara Tenggarong KALTIM', 2021, '08125877244', 'verified'),
+('3.64.1821.00200', 'jamlauddin', 'Tenggarong sebrang kab. Kutai karta negara KALTIM', 2021, '08347558450', 'verified'),
+('3.64.1821.00201', 'Ach . Fauzi Bin H . Masrani', 'J1 . Propinsi RT .07/03 Petung KM .18 Penajam Pasar Utara Kaltim', 2021, '085246500877', 'verified'),
+('3.76.1821.00202', 'Hasan Habibus Sahry Bin Habibul Hasan', 'J l . Kijang No . I Banua Bant Kec . Wonomulyo Kab . Polmy Sulbar', 2021, '08428515892', 'verified'),
+('3.76.0715.00203', 'Ja’far Bin Ali Al Attas', 'Jl . Lembu No .6 Kec . Wonomulio SULBAR', 2015, '081332436550', 'verified'),
+('3.76.1821.00204', 'Jafar Siddiq A la ttas Bin Hb Ali Husen Al a ttas', 'J l . Lembu NO . 06 LU I Wonomulyo Polewali Mandar Sulawesi Mandak , Sulbar 91352', 2021, '085255340018', 'verified'),
+('3.72.1821.00205', 'M Ikhlas Hdi Jarga Bin Zulfikar SM BE', 'Jl. Palu - Bangga . Binangga Kec . Marawola , Palu,SULTENG', 2021, '081341002279', 'verified')
+ON CONFLICT (nomor_id_unik) DO UPDATE 
+SET nama_lengkap = EXCLUDED.nama_lengkap,
+    nomor_hp = EXCLUDED.nomor_hp,
+    alamat_domisili = EXCLUDED.alamat_domisili,
+    status_verifikasi = 'verified';
