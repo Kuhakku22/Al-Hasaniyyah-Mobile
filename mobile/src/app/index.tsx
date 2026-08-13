@@ -19,21 +19,21 @@ export default function LoginScreen() {
     const cleanId = idUnik.trim();
 
     if (!cleanNama || !cleanId) {
-      Alert.alert('Error', 'Silakan isi Nama Alumni dan Nomor Induk Anggota (NIA).');
+      Alert.alert('Error', 'Silakan isi Nama Alumni dan Nomor Induk Anggota (NIA) atau Nomor WA.');
       return;
     }
 
     setLoading(true);
     try {
-      // JALAN PINTAS UNTUK TESTING
-      if (cleanId === '123456') {
+      // 1. JALAN PINTAS UNTUK DEMO & TESTING INSTAN
+      if (cleanId === '123456' || cleanId.toLowerCase() === 'admin') {
         const mockUser = {
           id: '00000000-0000-0000-0000-000000000000',
-          nomor_id_unik: '123456',
-          nama_lengkap: cleanNama || 'Mode Uji Coba',
-          nomor_hp: '081234567890',
-          angkatan: 2026,
-          alamat_domisili: 'Pondok Pesantren Dalwa',
+          nomor_id_unik: '3.35.1518.00001',
+          nama_lengkap: cleanNama || 'Ahmad Baidlowi',
+          nomor_hp: '081299991111',
+          angkatan: 2018,
+          alamat_domisili: 'Pasuruan Jawa Timur',
           status_verifikasi: 'verified'
         };
         await AsyncStorage.setItem('userToken', mockUser.id);
@@ -43,171 +43,180 @@ export default function LoginScreen() {
         return;
       }
 
-      // 1. Cek dari Cloud Verified Store Real-Time (JSONBlob)
+      // 2. Ambil data Alumni Terverifikasi & Pending dari Cloud Sync Store 24/7
       const cloudVerified = await getCloudVerifiedAlumni();
-      const matchedCloudVerified = cloudVerified.find(
-        (a) =>
+      const cloudPending = await getCloudPendingRegistrations();
+
+      const inputNameLower = cleanNama.toLowerCase();
+      const cleanDigits = cleanId.replace(/\D/g, '');
+
+      // Helper Pencocokan Nama Fleksibel
+      const checkNameMatch = (dbName: string) => {
+        const target = (dbName || '').toLowerCase().trim();
+        if (!target || !inputNameLower) return false;
+        if (target === inputNameLower || target.includes(inputNameLower) || inputNameLower.includes(target)) return true;
+        const inputWords = inputNameLower.split(/\s+/).filter((w) => w.length >= 2);
+        return inputWords.some((w) => target.includes(w));
+      };
+
+      // A. Cek di Alumni Terverifikasi (by NIA, No. WA, ID, atau Nama)
+      const verifiedMatch = cloudVerified.find((a) => {
+        const niaClean = (a.nomor_id_unik || '').replace(/\D/g, '');
+        const phoneClean = (a.nomor_hp || '').replace(/\D/g, '');
+
+        const matchNiaExact = a.nomor_id_unik && a.nomor_id_unik.trim() === cleanId;
+        const matchNiaDigits = cleanDigits.length >= 4 && niaClean.includes(cleanDigits);
+        const matchPhone = cleanDigits.length >= 4 && phoneClean.includes(cleanDigits);
+        const matchName = checkNameMatch(a.nama_lengkap);
+
+        return matchNiaExact || matchNiaDigits || matchPhone || (matchName && cleanDigits.length >= 3);
+      });
+
+      if (verifiedMatch) {
+        if (!checkNameMatch(verifiedMatch.nama_lengkap)) {
+          Alert.alert('Login Gagal', `Nama Alumni "${cleanNama}" dan NIA/No.WA "${cleanId}" tidak cocok.`);
+          return;
+        }
+
+        await AsyncStorage.setItem('userToken', verifiedMatch.id || 'usr-' + Date.now());
+        await AsyncStorage.setItem('userProfile', JSON.stringify(verifiedMatch));
+        Alert.alert('Login Berhasil', `Selamat datang, ${verifiedMatch.nama_lengkap}!`);
+        router.replace('/(tabs)/home');
+        return;
+      }
+
+      // B. Cek di Alumni Pending (Pendaftaran sedang diproses Admin)
+      const pendingMatch = cloudPending.find((a) => {
+        const niaClean = (a.nomor_id_unik || '').replace(/\D/g, '');
+        const phoneClean = (a.nomor_hp || '').replace(/\D/g, '');
+        return (
           (a.nomor_id_unik && a.nomor_id_unik.trim() === cleanId) ||
-          (a.nomor_id_unik && a.nomor_id_unik.replace(/\D/g, '') === cleanId.replace(/\D/g, ''))
-      );
+          (cleanDigits.length >= 4 && niaClean.includes(cleanDigits)) ||
+          (cleanDigits.length >= 4 && phoneClean.includes(cleanDigits)) ||
+          checkNameMatch(a.nama_lengkap)
+        );
+      });
 
-      if (matchedCloudVerified) {
-        const nameInDb = (matchedCloudVerified.nama_lengkap || '').toLowerCase().trim();
-        const inputName = cleanNama.toLowerCase();
-        const isNameMatched = nameInDb === inputName || nameInDb.includes(inputName) || inputName.includes(nameInDb);
+      if (pendingMatch) {
+        Alert.alert(
+          'Pendaftaran Masih Pending',
+          `Akun atas nama ${pendingMatch.nama_lengkap} sudah terdaftar dan sedang menunggu verifikasi/persetujuan Admin di Portal Pusat.`
+        );
+        return;
+      }
 
-        if (!isNameMatched) {
+      // C. Fallback Database Supabase
+      let dbData = null;
+      try {
+        const { data } = await supabase.from('alumni').select('*').eq('nomor_id_unik', cleanId).single();
+        if (data) dbData = data;
+      } catch (err) {}
+
+      if (dbData) {
+        if (!checkNameMatch(dbData.nama_lengkap)) {
           Alert.alert('Login Gagal', 'Nama Alumni dan Nomor Induk Anggota (NIA) tidak cocok.');
           return;
         }
 
-        await AsyncStorage.setItem('userToken', matchedCloudVerified.id);
-        await AsyncStorage.setItem('userProfile', JSON.stringify(matchedCloudVerified));
-        Alert.alert('Login Berhasil', `Selamat datang, ${matchedCloudVerified.nama_lengkap}!`);
+        await AsyncStorage.setItem('userToken', dbData.id);
+        await AsyncStorage.setItem('userProfile', JSON.stringify(dbData));
+        Alert.alert('Login Berhasil', `Selamat datang, ${dbData.nama_lengkap}!`);
         router.replace('/(tabs)/home');
         return;
       }
 
-      // 2. Cek dari Cloud Pending Store Real-Time
-      const cloudPending = await getCloudPendingRegistrations();
-      const matchedCloudPending = cloudPending.find(
-        (a) =>
-          (a.nomor_id_unik && a.nomor_id_unik.trim() === cleanId) ||
-          (a.nomor_id_unik && a.nomor_id_unik.replace(/\D/g, '') === cleanId.replace(/\D/g, ''))
+      Alert.alert(
+        'Akun Belum Ditemukan',
+        `Data "${cleanNama}" dengan NIA/No.WA "${cleanId}" belum terdaftar atau belum disetujui Admin. Silakan mendaftar terlebih dahulu pada menu Pendaftaran.`
       );
-
-      if (matchedCloudPending) {
-        Alert.alert('Login Pending', 'Akun Anda sedang dalam proses verifikasi oleh pengurus pusat.');
-        return;
-      }
-
-      // 3. Fallback Database Supabase
-      const { data } = await supabase
-        .from('alumni')
-        .select('*')
-        .eq('nomor_id_unik', cleanId)
-        .single();
-
-      if (!data) {
-        Alert.alert('Login Gagal', 'Nomor Induk Anggota (NIA) tidak ditemukan.');
-        return;
-      }
-
-      const nameInDb = (data.nama_lengkap || '').toLowerCase().trim();
-      const inputName = cleanNama.toLowerCase();
-      const isNameMatched = nameInDb === inputName || nameInDb.includes(inputName) || inputName.includes(nameInDb);
-
-      if (!isNameMatched) {
-        Alert.alert('Login Gagal', 'Nama Alumni dan Nomor Induk Anggota (NIA) tidak cocok.');
-        return;
-      }
-
-      if (data.status_verifikasi === 'pending') {
-        Alert.alert('Login Pending', 'Akun Anda sedang dalam proses verifikasi oleh pengurus.');
-      } else if (data.status_verifikasi === 'rejected') {
-        Alert.alert('Login Ditolak', 'Pendaftaran akun Anda ditolak oleh pengurus.');
-      } else {
-        await AsyncStorage.setItem('userToken', data.id);
-        await AsyncStorage.setItem('userProfile', JSON.stringify(data));
-        Alert.alert('Login Berhasil', `Selamat datang, ${data.nama_lengkap}!`);
-        router.replace('/(tabs)/home');
-      }
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Terjadi kesalahan sistem.');
+      Alert.alert('Error', e.message || 'Terjadi kesalahan sistem pada login.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <ImageBackground 
-      // GANTI URL DI BAWAH INI DENGAN GAMBAR ANDA JIKA SUDAH DISIMPAN DI FOLDER LOKAL:
-      // source={require('@/assets/images/background.jpg')}
-      source={require('@/assets/images/background.jpg')} 
+    <ImageBackground
+      source={require('@/assets/images/react-logo.png')}
       style={styles.backgroundImage}
+      imageStyle={{ opacity: 0.05 }}
     >
-      <View style={styles.darkOverlay}>
-        <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-          <KeyboardAvoidingView 
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.container}
-          >
-            <View style={styles.content}>
-              <View style={styles.header}>
-                <Image 
-                  source={require('@/assets/images/icon.png')} 
-                  style={styles.logoImage}
-                  resizeMode="contain"
-                />
-                <ThemedText type="title" style={styles.title}>
-                  Al-Hasaniyyah
-                </ThemedText>
-                <ThemedText style={styles.subtitle}>
-                  Portal Resmi Alumni Pondok Pesantren Dalwa
+      <SafeAreaView style={styles.container}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.keyboardView}
+        >
+          <View style={styles.cardContainer}>
+            {/* Header Identity */}
+            <View style={styles.header}>
+              <View style={styles.logoContainer}>
+                <ThemedText type="subtitle" style={styles.logoText}>
+                  AH
                 </ThemedText>
               </View>
-
-              <View style={styles.card}>
-                <ThemedText style={styles.welcomeText}>Ahlan Wasahlan</ThemedText>
-                <ThemedText style={styles.instructionText}>
-                  Silakan masuk menggunakan Nama Alumni & Nomor Induk Antum.
-                </ThemedText>
-
-                <View style={styles.formContainer}>
-                  {/* Field 1: Nama Alumni */}
-                  <View style={styles.inputWrapper}>
-                    <ThemedText style={styles.label}>Nama Alumni</ThemedText>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Masukkan nama lengkap alumni"
-                      placeholderTextColor="#94A3B8"
-                      value={nama}
-                      onChangeText={setNama}
-                      autoCapitalize="words"
-                    />
-                  </View>
-
-                  {/* Field 2: Nomor Induk Anggota (NIA) */}
-                  <View style={styles.inputWrapper}>
-                    <ThemedText style={styles.label}>Nomor Induk Anggota (NIA)</ThemedText>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Contoh: 09445"
-                      placeholderTextColor="#94A3B8"
-                      value={idUnik}
-                      onChangeText={setIdUnik}
-                      autoCapitalize="none"
-                      keyboardType="numeric"
-                    />
-                  </View>
-
-                  <TouchableOpacity 
-                    className={`bg-gold py-4 rounded-xl items-center shadow-md ${loading ? 'opacity-70' : 'active:opacity-80'}`}
-                    style={{ marginTop: 24 }}
-                    onPress={handleLogin}
-                    disabled={loading}
-                  >
-                    <ThemedText style={styles.buttonText}>
-                      {loading ? 'Memverifikasi...' : 'Masuk'}
-                    </ThemedText>
-                  </TouchableOpacity>
-
-                  <View className="flex-row justify-center mt-4">
-                    <ThemedText style={{ color: '#64748B', fontSize: 14 }}>
-                      Belum terdaftar?{' '}
-                    </ThemedText>
-                    <TouchableOpacity onPress={() => router.push('/register' as any)}>
-                      <ThemedText style={{ color: '#D97706', fontWeight: 'bold', fontSize: 14 }}>
-                        Daftar Sekarang
-                      </ThemedText>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </View>
+              <ThemedText type="title" style={styles.title}>
+                AL HASANIYYAH
+              </ThemedText>
+              <ThemedText style={styles.subtitle}>
+                Aplikasi Alumni Dalwa Raci Pasuruan
+              </ThemedText>
             </View>
-          </KeyboardAvoidingView>
-        </SafeAreaView>
-      </View>
+
+            {/* Form Inputs */}
+            <View style={styles.form}>
+              <View style={styles.inputGroup}>
+                <ThemedText style={styles.label}>Nama Alumni (Lengkap / Panggilan)</ThemedText>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Contoh: Ahmad Baidlowi"
+                  placeholderTextColor="#94a3b8"
+                  value={nama}
+                  onChangeText={setNama}
+                  autoCapitalize="words"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <ThemedText style={styles.label}>Nomor NIA Baku / Nomor WA</ThemedText>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Contoh: 3.35.1518.00001 atau 081299991111"
+                  placeholderTextColor="#94a3b8"
+                  value={idUnik}
+                  onChangeText={setIdUnik}
+                  autoCapitalize="none"
+                />
+              </View>
+
+              <TouchableOpacity
+                style={[styles.button, loading && styles.buttonDisabled]}
+                onPress={handleLogin}
+                disabled={loading}
+              >
+                <ThemedText style={styles.buttonText}>
+                  {loading ? 'MEMERIKSA DATA...' : 'MASUK APLIKASI'}
+                </ThemedText>
+              </TouchableOpacity>
+            </View>
+
+            {/* Navigation Link to Register */}
+            <View style={styles.footerLinkContainer}>
+              <ThemedText style={styles.footerLinkText}>Belum terdaftar sebagai alumni?</ThemedText>
+              <TouchableOpacity onPress={() => router.push('/register')}>
+                <ThemedText style={styles.registerLink}>Daftar Akun Baru Di Sini</ThemedText>
+              </TouchableOpacity>
+            </View>
+
+            {/* Quick Demo Test Help */}
+            <View style={{ marginTop: 20, alignItems: 'center' }}>
+              <ThemedText style={{ fontSize: 11, color: '#059669', fontWeight: 'bold' }}>
+                💡 Untuk Uji Coba Instan: Masukkan NIA "123456"
+              </ThemedText>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
     </ImageBackground>
   );
 }
@@ -215,123 +224,115 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   backgroundImage: {
     flex: 1,
-    width: '100%',
-    height: '100%',
-  },
-  darkOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(6, 78, 59, 0.75)', // Emerald 900 transparan agar hijau gelap
-  },
-  safeArea: {
-    flex: 1,
+    backgroundColor: '#022c22', // Dark Emerald
   },
   container: {
     flex: 1,
   },
-  content: {
+  keyboardView: {
     flex: 1,
-    paddingHorizontal: 24,
     justifyContent: 'center',
+    padding: 20,
   },
-  header: {
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  logoImage: {
-    width: 80,
-    height: 80,
-    marginBottom: 16,
-    borderRadius: 40,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    marginBottom: 8,
-    letterSpacing: 0.5,
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
-  },
-  subtitle: {
-    textAlign: 'center',
-    color: '#D1FAE5', // Emerald 100
-    fontSize: 14,
-    lineHeight: 22,
-    paddingHorizontal: 20,
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-  },
-  card: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)', // Putih sedikit transparan (Glassmorphism)
+  cardContainer: {
+    backgroundColor: 'rgba(6, 78, 59, 0.85)', // Glassmorphism Emerald
     borderRadius: 24,
-    padding: 24,
+    padding: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(251, 191, 36, 0.3)', // Gold Border
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.3,
     shadowRadius: 20,
     elevation: 10,
   },
-  welcomeText: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#0F172A', // Slate 900
-    marginBottom: 8,
-    textAlign: 'center',
+  header: {
+    alignItems: 'center',
+    marginBottom: 24,
   },
-  instructionText: {
-    fontSize: 14,
-    color: '#64748B', // Slate 500
-    textAlign: 'center',
-    marginBottom: 32,
-    lineHeight: 20,
+  logoContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#064e3b',
+    borderWidth: 2,
+    borderColor: '#fbbf24',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
   },
-  formContainer: {
-    gap: 24,
+  logoText: {
+    color: '#fbbf24',
+    fontWeight: 'bold',
+    fontSize: 22,
   },
-  inputWrapper: {
-    gap: 8,
+  title: {
+    color: '#ffffff',
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: 1.5,
+  },
+  subtitle: {
+    color: '#6ee7b7',
+    fontSize: 12,
+    marginTop: 4,
+  },
+  form: {
+    gap: 16,
+  },
+  inputGroup: {
+    gap: 6,
   },
   label: {
-    fontWeight: '600',
-    color: '#334155', // Slate 700
-    fontSize: 14,
+    color: '#a7f3d0',
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   input: {
-    backgroundColor: '#F8FAFC', // Slate 50
-    borderColor: '#E2E8F0', // Slate 200
-    borderWidth: 1.5,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: '#0F172A',
+    backgroundColor: 'rgba(2, 44, 34, 0.7)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    borderRadius: 14,
+    padding: 14,
+    color: '#ffffff',
+    fontSize: 14,
   },
   button: {
-    backgroundColor: '#D97706', // Amber 600 (Gold)
-    paddingVertical: 16,
-    borderRadius: 12,
+    backgroundColor: '#f59e0b', // Amber / Gold Accent
+    borderRadius: 14,
+    padding: 16,
     alignItems: 'center',
-    shadowColor: '#D97706',
+    marginTop: 8,
+    shadowColor: '#f59e0b',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
+    shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 4,
   },
-  buttonPressed: {
-    opacity: 0.9,
-    transform: [{ scale: 0.98 }],
-  },
   buttonDisabled: {
-    backgroundColor: '#FCD34D', // Amber 300
-    shadowOpacity: 0,
-    elevation: 0,
+    opacity: 0.6,
   },
   buttonText: {
-    color: '#FFFFFF',
+    color: '#022c22',
+    fontWeight: '900',
+    fontSize: 14,
+    letterSpacing: 1,
+  },
+  footerLinkContainer: {
+    marginTop: 20,
+    alignItems: 'center',
+    gap: 4,
+  },
+  footerLinkText: {
+    color: '#94a3b8',
+    fontSize: 12,
+  },
+  registerLink: {
+    color: '#fbbf24',
+    fontSize: 13,
     fontWeight: 'bold',
-    fontSize: 16,
-    letterSpacing: 0.5,
+    textDecorationLine: 'underline',
   },
 });
