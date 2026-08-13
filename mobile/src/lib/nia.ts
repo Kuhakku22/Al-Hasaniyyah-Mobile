@@ -1,6 +1,11 @@
 /**
  * Library Utility untuk Pembuatan Nomor Induk Anggota (NIA) Baku Al Hasaniyyah
  * Format Baku: X.YY.ZZZZ.AAAAA
+ * 
+ * - X     : Kode Status (1 = Ahlu Beit, 2 = Masyaikh, 3 = Alumni, 4 = Musaidin, 5 = Banat)
+ * - YY    : Kode Provinsi BPS (2 Digit)
+ * - ZZZZ  : 2 Digit Tahun Masuk + 2 Digit Tahun Keluar (Contoh: 2015 - 2018 -> 1518)
+ * - AAAAA : Nomor Urut Pendaftaran (5 Digit Pad, e.g. 00008, 12050)
  */
 
 export interface ProvinceInfo {
@@ -46,6 +51,14 @@ export const BPS_PROVINCES: ProvinceInfo[] = [
   { code: "92", name: "Papua Barat", keywords: ["papua barat", "manokwari", "sorong", "fakfak", "kaimana"] }
 ];
 
+export const STATUS_CODES: Record<string, string> = {
+  "Ahlu Beit": "1",
+  "Masyaikh": "2",
+  "Alumni": "3",
+  "Musaidin": "4",
+  "Banat": "5"
+};
+
 export function detectProvinceCode(locationText: string): { code: string; name: string } {
   if (!locationText || !locationText.trim()) {
     return { code: "35", name: "Jawa Timur (Default)" };
@@ -65,6 +78,14 @@ export function detectProvinceCode(locationText: string): { code: string; name: 
   }
 
   return { code: "35", name: "Jawa Timur (Default)" };
+}
+
+export function getStatusCode(statusText: string): string {
+  if (!statusText) return "3";
+  const matched = Object.keys(STATUS_CODES).find(
+    (k) => k.toLowerCase() === statusText.trim().toLowerCase()
+  );
+  return matched ? STATUS_CODES[matched] : "3";
 }
 
 export function formatTwoDigitYear(yearInput: string | number): string {
@@ -89,7 +110,7 @@ export function generateStandardNIA(params: {
   tahunKeluar: string | number;
   sequenceNumber: number;
 }): { nia: string; statusCode: string; provinceCode: string; provinceName: string } {
-  const x = params.statusCode || "3"; // Default 3 = Alumni
+  const x = params.statusCode || getStatusCode(params.statusText || "Alumni");
 
   let yy = params.provinceCode || "";
   let provName = "";
@@ -111,3 +132,142 @@ export function generateStandardNIA(params: {
   const nia = `${x}.${yy}.${zzzz}.${aaaaa}`;
   return { nia, statusCode: x, provinceCode: yy, provinceName: provName };
 }
+
+export interface ParsedAlumniItem {
+  idTemp: string;
+  nama_lengkap: string;
+  status_anggota: string;
+  alamat_domisili: string;
+  kode_provinsi: string;
+  nama_provinsi: string;
+  tahun_masuk: number;
+  tahun_keluar: number;
+  nomor_hp: string;
+  generated_nia: string;
+  status_validasi: "valid" | "warning";
+  catatan?: string;
+}
+
+export function parseAlumniTextBulk(rawText: string, startSequence: number = 1): ParsedAlumniItem[] {
+  if (!rawText || !rawText.trim()) return [];
+
+  const lines = rawText
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+
+  const results: ParsedAlumniItem[] = [];
+  let seq = startSequence;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    if (line.toLowerCase().startsWith("nama") && line.toLowerCase().includes("alamat")) {
+      continue;
+    }
+
+    let parts: string[] = [];
+    if (line.includes("\t")) {
+      parts = line.split("\t");
+    } else if (line.includes(";")) {
+      parts = line.split(";");
+    } else if (line.includes("|")) {
+      parts = line.split("|");
+    } else if (line.includes(",")) {
+      parts = line.split(",");
+    } else {
+      parts = [line];
+    }
+
+    parts = parts.map((p) => p.trim()).filter((p) => p.length > 0);
+
+    let nama = "";
+    let statusAnggota = "Alumni";
+    let domisili = "Jawa Timur";
+    let tahunMasuk = 2018;
+    let tahunKeluar = 2021;
+    let noHp = "";
+
+    if (parts.length >= 5) {
+      nama = parts[0];
+      statusAnggota = parts[1] || "Alumni";
+      domisili = parts[2] || "Jawa Timur";
+      tahunMasuk = parseInt(parts[3], 10) || 2018;
+      tahunKeluar = parseInt(parts[4], 10) || 2021;
+      noHp = parts[5] || "";
+    } else if (parts.length >= 3) {
+      nama = parts[0];
+      domisili = parts[1] || "Jawa Timur";
+      const years = parts[2].match(/\d{4}/g);
+      if (years && years.length >= 2) {
+        tahunMasuk = parseInt(years[0], 10);
+        tahunKeluar = parseInt(years[1], 10);
+      } else if (years && years.length === 1) {
+        tahunMasuk = parseInt(years[0], 10);
+        tahunKeluar = tahunMasuk + 3;
+      }
+    } else {
+      const cleanLine = line.replace(/^\d+[\.\)-]\s*/, "");
+      const hpMatch = cleanLine.match(/08\d{8,12}/);
+      if (hpMatch) {
+        noHp = hpMatch[0];
+      }
+
+      const yearsMatch = cleanLine.match(/\b(19\d{2}|20\d{2})\b/g);
+      if (yearsMatch && yearsMatch.length >= 2) {
+        tahunMasuk = parseInt(yearsMatch[0], 10);
+        tahunKeluar = parseInt(yearsMatch[1], 10);
+      } else if (yearsMatch && yearsMatch.length === 1) {
+        tahunMasuk = parseInt(yearsMatch[0], 10);
+        tahunKeluar = tahunMasuk + 3;
+      }
+
+      const statusFound = ["Ahlu Beit", "Masyaikh", "Alumni", "Musaidin", "Banat"].find(
+        (s) => cleanLine.toLowerCase().includes(s.toLowerCase())
+      );
+      if (statusFound) {
+        statusAnggota = statusFound;
+      }
+
+      const cleanWithoutNumbers = cleanLine
+        .replace(/08\d{8,12}/, "")
+        .replace(/\b(19\d{2}|20\d{2})\b/g, "")
+        .replace(/(masuk|keluar|alumni|banat|masyaikh|ahlu beit|musaidin)/gi, "")
+        .trim();
+
+      const namePart = cleanWithoutNumbers.split(/[-–,\(]/)[0].trim();
+      nama = namePart || `Alumni Pendaftar #${seq}`;
+      domisili = cleanWithoutNumbers || "Jawa Timur";
+    }
+
+    const provInfo = detectProvinceCode(domisili);
+
+    const niaResult = generateStandardNIA({
+      statusText: statusAnggota,
+      provinceCode: provInfo.code,
+      tahunMasuk,
+      tahunKeluar,
+      sequenceNumber: seq,
+    });
+
+    results.push({
+      idTemp: `temp-${Date.now()}-${i}`,
+      nama_lengkap: nama,
+      status_anggota: statusAnggota,
+      alamat_domisili: domisili,
+      kode_provinsi: provInfo.code,
+      nama_provinsi: provInfo.name,
+      tahun_masuk: tahunMasuk,
+      tahun_keluar: tahunKeluar,
+      nomor_hp: noHp || "08123456789",
+      generated_nia: niaResult.nia,
+      status_validasi: nama.length > 2 ? "valid" : "warning",
+      catatan: nama.length <= 2 ? "Nama terlalu pendek" : undefined,
+    });
+
+    seq++;
+  }
+
+  return results;
+}
+

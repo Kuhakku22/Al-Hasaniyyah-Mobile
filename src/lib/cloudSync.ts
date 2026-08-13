@@ -15,7 +15,7 @@ export interface PendingRegistration {
   created_at: string;
 }
 
-// In-Memory Cache untuk performa kilat
+// In-Memory & LocalStorage Cache untuk performa kilat
 let cachedPending: PendingRegistration[] = [];
 let cachedVerified: PendingRegistration[] = [];
 let lastPendingFetch = 0;
@@ -55,6 +55,29 @@ const DEFAULT_VERIFIED_FALLBACK: PendingRegistration[] = [
     created_at: new Date().toISOString(),
   },
 ];
+
+// Read from LocalStorage if available
+function loadLocalStorageVerified(): PendingRegistration[] {
+  if (typeof window !== "undefined") {
+    try {
+      const stored = window.localStorage.getItem("@hasaniyyah_verified_cache");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+  }
+  return [];
+}
+
+// Save to LocalStorage if available
+function saveLocalStorageVerified(data: PendingRegistration[]) {
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.setItem("@hasaniyyah_verified_cache", JSON.stringify(data));
+    } catch (e) {}
+  }
+}
 
 // 1. Ambil seluruh data pendaftaran pending dari Cloud / API
 export async function getCloudPendingRegistrations(forceRefresh = false): Promise<PendingRegistration[]> {
@@ -132,6 +155,9 @@ export async function getCloudVerifiedAlumni(forceRefresh = false): Promise<Pend
     return cachedVerified;
   }
 
+  const localSaved = loadLocalStorageVerified();
+  let fetchedData: PendingRegistration[] = [];
+
   try {
     const res = await Promise.race([
       fetch(`${ADMIN_API_BASE}/verified`, { cache: "no-store", headers: { "Cache-Control": "no-cache" } }),
@@ -142,22 +168,27 @@ export async function getCloudVerifiedAlumni(forceRefresh = false): Promise<Pend
     if (res && res.ok) {
       const json = await res.json();
       if (json && json.data && Array.isArray(json.data)) {
-        const merged = [...json.data];
-        DEFAULT_VERIFIED_FALLBACK.forEach((fb) => {
-          if (!merged.some((m) => m.nomor_hp === fb.nomor_hp || m.nomor_id_unik === fb.nomor_id_unik)) {
-            merged.push(fb);
-          }
-        });
-        cachedVerified = merged;
-        lastVerifiedFetch = now;
-        return merged;
+        fetchedData = json.data;
       }
     }
   } catch (err) {}
 
-  if (cachedVerified.length === 0) {
-    cachedVerified = DEFAULT_VERIFIED_FALLBACK;
-  }
+  const merged = [...fetchedData];
+  localSaved.forEach((ls) => {
+    if (!merged.some((m) => m.nomor_hp === ls.nomor_hp || m.nomor_id_unik === ls.nomor_id_unik || m.id === ls.id)) {
+      merged.push(ls);
+    }
+  });
+
+  DEFAULT_VERIFIED_FALLBACK.forEach((fb) => {
+    if (!merged.some((m) => m.nomor_hp === fb.nomor_hp || m.nomor_id_unik === fb.nomor_id_unik)) {
+      merged.push(fb);
+    }
+  });
+
+  cachedVerified = merged;
+  lastVerifiedFetch = now;
+  saveLocalStorageVerified(merged);
   return cachedVerified;
 }
 
@@ -169,6 +200,7 @@ export async function addCloudVerifiedAlumni(verifiedItem: PendingRegistration):
     );
     cachedVerified = [verifiedItem, ...filtered];
     lastVerifiedFetch = Date.now();
+    saveLocalStorageVerified(cachedVerified);
 
     // Kirim paralel ke Vercel Verified API
     Promise.allSettled([
@@ -189,3 +221,34 @@ export async function addCloudVerifiedAlumni(verifiedItem: PendingRegistration):
     return false;
   }
 }
+
+// 6. Update alumni terverifikasi yang ada
+export async function updateCloudVerifiedAlumni(updatedItem: PendingRegistration): Promise<boolean> {
+  try {
+    cachedVerified = cachedVerified.map((item) =>
+      item.id === updatedItem.id || (updatedItem.nomor_hp && item.nomor_hp === updatedItem.nomor_hp)
+        ? { ...item, ...updatedItem }
+        : item
+    );
+    lastVerifiedFetch = Date.now();
+    saveLocalStorageVerified(cachedVerified);
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
+// 7. Hapus/Arsipkan alumni terverifikasi
+export async function deleteCloudVerifiedAlumni(idOrPhone: string): Promise<boolean> {
+  try {
+    cachedVerified = cachedVerified.filter(
+      (item) => item.id !== idOrPhone && item.nomor_hp !== idOrPhone && item.nomor_id_unik !== idOrPhone
+    );
+    lastVerifiedFetch = Date.now();
+    saveLocalStorageVerified(cachedVerified);
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+

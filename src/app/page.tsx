@@ -12,6 +12,8 @@ import {
   getCloudPendingRegistrations,
   getCloudVerifiedAlumni,
   addCloudVerifiedAlumni,
+  updateCloudVerifiedAlumni,
+  deleteCloudVerifiedAlumni,
   removeCloudPendingRegistration,
   PendingRegistration,
 } from "../lib/cloudSync";
@@ -102,12 +104,22 @@ export default function AdminPortal() {
   const [replyText, setReplyText] = useState<Record<string, string>>({});
   const [editingNia, setEditingNia] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Modal Edit Alumni
+  const [editModalItem, setEditModalItem] = useState<Alumni | null>(null);
 
   // Bulk Import State
   const [bulkInput, setBulkInput] = useState("");
   const [parsedItems, setParsedItems] = useState<ParsedAlumniItem[]>([]);
   const [isSavingBulk, setIsSavingBulk] = useState(false);
   const [bulkSaveMsg, setBulkSaveMsg] = useState("");
+
+  // Modal Tambah Iuran
+  const [showAddIuranModal, setShowAddIuranModal] = useState(false);
+  const [newIuranNama, setNewIuranNama] = useState("");
+  const [newIuranPeriode, setNewIuranPeriode] = useState("Agustus 2026");
+  const [newIuranNominal, setNewIuranNominal] = useState("25000");
 
   // Check login state
   useEffect(() => {
@@ -138,10 +150,9 @@ export default function AdminPortal() {
     sessionStorage.removeItem("adminAuth");
   };
 
-  // Fetch Data Super Cepat Non-Blocking (Parallel Promise.allSettled)
+  // Fetch Data Super Cepat Non-Blocking
   const fetchData = async () => {
     try {
-      // Jalankan seluruh pemanggilan data secara PARALEL untuk kecepatan kilat (< 50ms)
       const [cloudPendingsRes, cloudVerifiedRes, apiRes, dbRes] = await Promise.allSettled([
         getCloudPendingRegistrations(),
         getCloudVerifiedAlumni(),
@@ -165,7 +176,6 @@ export default function AdminPortal() {
         dbList = (dbRes.value as any).data;
       }
 
-      // Ambil juga pendaftaran lokal jika ada
       let localPendings: Alumni[] = [];
       if (typeof window !== "undefined") {
         try {
@@ -182,22 +192,18 @@ export default function AdminPortal() {
       setAlumni((prevList) => {
         const alumniMap = new Map<string, Alumni>();
 
-        // 1. Masukkan data mock awal
         MOCK_ALUMNI.forEach((a) => {
           if (a.nomor_hp) alumniMap.set(a.nomor_hp, a);
         });
 
-        // 2. Pertahankan data state sebelumnya agar tidak berkedip (no flicker)
         prevList.forEach((item) => {
           if (item.nomor_hp) alumniMap.set(item.nomor_hp, item);
         });
 
-        // 3. Masukkan data DB Supabase
         dbList.forEach((a) => {
           if (a.nomor_hp) alumniMap.set(a.nomor_hp, a);
         });
 
-        // 4. Masukkan data LocalStorage
         localPendings.forEach((p) => {
           if (p.nomor_hp && !verifiedPhones.has(p.nomor_hp)) {
             const existing = alumniMap.get(p.nomor_hp);
@@ -207,7 +213,6 @@ export default function AdminPortal() {
           }
         });
 
-        // 5. Masukkan data API Vercel
         apiList.forEach((p) => {
           if (p.nomor_hp) {
             const existing = alumniMap.get(p.nomor_hp);
@@ -217,7 +222,6 @@ export default function AdminPortal() {
           }
         });
 
-        // 6. Masukkan pendaftar pending cloud jika belum terverifikasi
         cloudPendings.forEach((p) => {
           if (p.nomor_hp && !verifiedPhones.has(p.nomor_hp)) {
             const existing = alumniMap.get(p.nomor_hp);
@@ -227,7 +231,6 @@ export default function AdminPortal() {
           }
         });
 
-        // 7. Masukkan alumni cloud terverifikasi (Selalu menimpa status ke verified)
         cloudVerified.forEach((v) => {
           if (v.nomor_hp) {
             alumniMap.set(v.nomor_hp, {
@@ -240,9 +243,9 @@ export default function AdminPortal() {
         return Array.from(alumniMap.values());
       });
 
-      setIuran(MOCK_IURAN);
-      setInfak(MOCK_INFAK);
-      setKonsultasi(MOCK_KONSULTASI);
+      setIuran((prev) => (prev.length > 0 ? prev : MOCK_IURAN));
+      setInfak((prev) => (prev.length > 0 ? prev : MOCK_INFAK));
+      setKonsultasi((prev) => (prev.length > 0 ? prev : MOCK_KONSULTASI));
     } catch (e) {
       console.warn("Error fetching admin data:", e);
     } finally {
@@ -250,7 +253,6 @@ export default function AdminPortal() {
     }
   };
 
-  // Polling Super Stabil 2 Detik
   useEffect(() => {
     if (!isLoggedIn) return;
 
@@ -264,7 +266,7 @@ export default function AdminPortal() {
     };
   }, [isLoggedIn]);
 
-  // Generate Auto NIA Baku (X.YY.ZZZZ.AAAAA) untuk Alumni Pending
+  // Generate Auto NIA Baku (X.YY.ZZZZ.AAAAA)
   const handleAutoGenerateNiaSingle = (item: Alumni, index: number) => {
     const seq = (alumni.length || 0) + index + 1;
     const tahunMasuk = item.tahun_masuk || item.angkatan || 2018;
@@ -281,7 +283,7 @@ export default function AdminPortal() {
     setEditingNia((prev) => ({ ...prev, [item.id]: result.nia }));
   };
 
-  // Action: Approve Alumni & Persist ke Cloud Verified + Auto Send WhatsApp
+  // Action: Approve Alumni
   const handleApproveAlumni = async (id: string, nama: string, phone?: string | null) => {
     const rawNia = editingNia[id] || "";
     if (!rawNia.trim()) {
@@ -301,7 +303,6 @@ export default function AdminPortal() {
       created_at: new Date().toISOString(),
     };
 
-    // Update lokal instan secara optimis agar UI mulus tanpa jedag-jedug
     setAlumni((prev) =>
       prev.map((a) =>
         a.id === id || (phone && a.nomor_hp === phone)
@@ -310,15 +311,12 @@ export default function AdminPortal() {
       )
     );
 
-    // 1. Simpan ke Global Cloud Verified Store 24/7
     await addCloudVerifiedAlumni(approvedObject).catch(() => {});
 
-    // 2. Hapus dari Cloud Pending Store
     if (phone) {
       await removeCloudPendingRegistration(phone).catch(() => {});
     }
 
-    // 3. Simpan ke Supabase di Background
     try {
       await supabase
         .from("alumni")
@@ -330,7 +328,6 @@ export default function AdminPortal() {
         .eq("id", id);
     } catch (e) {}
 
-    // Auto buka WhatsApp untuk kirim notifikasi NIA ke Alumni
     if (phone) {
       openWhatsAppMessage({ phone, nama, nia: rawNia });
     }
@@ -356,6 +353,95 @@ export default function AdminPortal() {
       alumni.map((a) => (a.id === id ? { ...a, status_verifikasi: "rejected" } : a))
     );
     alert("Pendaftaran ditolak.");
+  };
+
+  // Action: Edit & Save Alumni Modal
+  const handleSaveEditAlumni = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editModalItem) return;
+
+    const updated: PendingRegistration = {
+      id: editModalItem.id,
+      nomor_id_unik: editModalItem.nomor_id_unik,
+      nama_lengkap: editModalItem.nama_lengkap,
+      angkatan: editModalItem.angkatan,
+      alamat_domisili: editModalItem.alamat_domisili,
+      status_verifikasi: editModalItem.status_verifikasi,
+      nomor_hp: editModalItem.nomor_hp,
+      created_at: new Date().toISOString(),
+    };
+
+    setAlumni((prev) =>
+      prev.map((a) => (a.id === updated.id ? { ...a, ...updated } : a))
+    );
+
+    await updateCloudVerifiedAlumni(updated).catch(() => {});
+
+    try {
+      await supabase
+        .from("alumni")
+        .update({
+          nama_lengkap: updated.nama_lengkap,
+          nomor_id_unik: updated.nomor_id_unik,
+          angkatan: updated.angkatan,
+          alamat_domisili: updated.alamat_domisili,
+          status_verifikasi: updated.status_verifikasi,
+          nomor_hp: updated.nomor_hp,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", updated.id);
+    } catch (e) {}
+
+    setEditModalItem(null);
+    alert("Data Alumni Berhasil Diperbarui!");
+  };
+
+  // Action: Delete Alumni Record
+  const handleDeleteAlumni = async (item: Alumni) => {
+    if (!confirm(`Apakah Anda yakin ingin menghapus alumni ${item.nama_lengkap}?`)) return;
+
+    setAlumni((prev) => prev.filter((a) => a.id !== item.id && a.nomor_hp !== item.nomor_hp));
+
+    await deleteCloudVerifiedAlumni(item.id).catch(() => {});
+    if (item.nomor_hp) {
+      await deleteCloudVerifiedAlumni(item.nomor_hp).catch(() => {});
+    }
+
+    try {
+      await supabase.from("alumni").delete().eq("id", item.id);
+    } catch (e) {}
+
+    alert("Data Alumni berhasil dihapus.");
+  };
+
+  // Action: Export Alumni to CSV (Excel Ready with UTF-8 BOM)
+  const handleExportCSV = () => {
+    const verifiedAlumni = alumni.filter((a) => a.status_verifikasi === "verified");
+    if (verifiedAlumni.length === 0) {
+      alert("Tidak ada data alumni terverifikasi untuk diekspor.");
+      return;
+    }
+
+    const headers = ["No", "Nama Lengkap", "NIA Resmi", "Angkatan", "Domisili", "Nomor WhatsApp", "Status"];
+    const rows = verifiedAlumni.map((a, idx) => [
+      idx + 1,
+      `"${(a.nama_lengkap || "").replace(/"/g, '""')}"`,
+      `"${a.nomor_id_unik || ""}"`,
+      a.angkatan || "",
+      `"${(a.alamat_domisili || "").replace(/"/g, '""')}"`,
+      `"${a.nomor_hp || ""}"`,
+      "Terverifikasi",
+    ]);
+
+    const csvContent = "\uFEFF" + [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `Data_Alumni_Al_Hasaniyyah_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   // Action: Submit reply for Konsultasi
@@ -385,10 +471,10 @@ export default function AdminPortal() {
     alert("Tanggapan berhasil dikirim!");
   };
 
-  // Handler: Process Bulk Input with AI Parser
+  // Handler: Process Bulk Input
   const handleProcessBulkInput = () => {
     if (!bulkInput.trim()) {
-      alert("Silakan masukkan teks mentah data alumni dari dokumen Word atau file CSV terlebih dahulu.");
+      alert("Silakan masukkan teks mentah data alumni terlebih dahulu.");
       return;
     }
 
@@ -398,7 +484,7 @@ export default function AdminPortal() {
     setBulkSaveMsg("");
   };
 
-  // Handler: Save Parsed Bulk Alumni to Supabase & Cloud Verified
+  // Handler: Save Parsed Bulk Alumni
   const handleSaveBulkToSupabase = async () => {
     if (parsedItems.length === 0) return;
 
@@ -458,6 +544,44 @@ export default function AdminPortal() {
     setIsSavingBulk(false);
   };
 
+  // Handler: Add New Iuran Record
+  const handleSaveAddIuran = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newIuranNama.trim()) {
+      alert("Nama Alumni harus diisi.");
+      return;
+    }
+
+    const newItem: Iuran = {
+      id: `iuran-${Date.now()}`,
+      nama_lengkap: newIuranNama.trim(),
+      periode: newIuranPeriode,
+      nominal: parseInt(newIuranNominal, 10) || 25000,
+      status: "lunas",
+      paid_at: new Date().toISOString(),
+      payment_ref: `REF-${Math.floor(100000 + Math.random() * 900000)}`,
+    };
+
+    setIuran([newItem, ...iuran]);
+    setShowAddIuranModal(false);
+    setNewIuranNama("");
+    alert("Catatan Pembayaran Iuran Berhasil Ditambahkan!");
+  };
+
+  // Filtered Alumni List
+  const filterAlumniByQuery = (items: Alumni[]) => {
+    if (!searchQuery.trim()) return items;
+    const q = searchQuery.toLowerCase();
+    return items.filter(
+      (a) =>
+        (a.nama_lengkap && a.nama_lengkap.toLowerCase().includes(q)) ||
+        (a.nomor_id_unik && a.nomor_id_unik.toLowerCase().includes(q)) ||
+        (a.alamat_domisili && a.alamat_domisili.toLowerCase().includes(q)) ||
+        (a.nomor_hp && a.nomor_hp.toLowerCase().includes(q)) ||
+        (a.angkatan && String(a.angkatan).includes(q))
+    );
+  };
+
   // UI: Login Screen
   if (!isLoggedIn) {
     return (
@@ -468,9 +592,7 @@ export default function AdminPortal() {
 
           <div className="flex flex-col items-center mb-8">
             <div className="w-20 h-20 bg-emerald-800 rounded-full border-2 border-amber-500 flex items-center justify-center mb-4 shadow-lg">
-              <svg className="w-10 h-10 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
+              <span className="text-amber-400 font-black text-2xl">AH</span>
             </div>
             <h2 className="text-2xl font-black tracking-wider text-center text-white">PORTAL ADMIN</h2>
             <p className="text-emerald-300 text-xs text-center mt-1 font-medium">Ikatan Alumni Al Hasaniyyah Dalwa</p>
@@ -500,7 +622,7 @@ export default function AdminPortal() {
           </form>
 
           <p className="text-center text-[10px] text-slate-400 mt-8">
-            Gunakan password <span className="font-mono text-amber-400">admin123</span> untuk masuk.
+            Gunakan password <span className="font-mono text-amber-400">admin123</span> atau <span className="font-mono text-amber-400">dalwa123</span>.
           </p>
         </div>
       </div>
@@ -508,8 +630,11 @@ export default function AdminPortal() {
   }
 
   // UI: Stats calculations
-  const pendingCount = alumni.filter((a) => a.status_verifikasi === "pending").length;
-  const verifiedCount = alumni.filter((a) => a.status_verifikasi === "verified").length;
+  const pendingList = alumni.filter((a) => a.status_verifikasi === "pending");
+  const verifiedList = alumni.filter((a) => a.status_verifikasi === "verified");
+
+  const pendingCount = pendingList.length;
+  const verifiedCount = verifiedList.length;
   const totalIuran = iuran.filter((i) => i.status === "lunas").reduce((sum, item) => sum + item.nominal, 0);
   const totalInfak = infak.reduce((sum, item) => sum + item.nominal, 0);
 
@@ -536,9 +661,6 @@ export default function AdminPortal() {
             onClick={handleLogout}
             className="bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500 hover:text-white px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-            </svg>
             Logout
           </button>
         </div>
@@ -547,79 +669,97 @@ export default function AdminPortal() {
       {/* Main Dashboard Area */}
       <main className="flex-1 p-6 max-w-7xl w-full mx-auto space-y-6">
         {/* Banner Welcome */}
-        <div className="bg-gradient-to-r from-emerald-900 to-slate-900 p-6 rounded-3xl border border-emerald-800 shadow-xl relative overflow-hidden flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="bg-gradient-to-r from-emerald-900 via-emerald-950 to-slate-900 p-6 rounded-3xl border border-emerald-800 shadow-xl relative overflow-hidden flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
           <div>
-            <h2 className="text-2xl font-black text-white">Ahlan wa Sahlan, Admin!</h2>
-            <p className="text-emerald-300 text-xs mt-1">Kelola data pendaftaran alumni baru, masukan data Word massal dengan Generator NIA Baku AI & Notifikasi WA Otomatis.</p>
+            <h2 className="text-2xl font-black text-white">Ahlan wa Sahlan, Admin Pusat!</h2>
+            <p className="text-emerald-300 text-xs mt-1">Sistem Pengelolaan Data Alumni, Verifikasi NIA Otomatis, Laporan Iuran & Donasi Infak Real-time.</p>
           </div>
-          <button
-            onClick={fetchData}
-            disabled={loading}
-            className="bg-amber-500 text-slate-950 px-5 py-2.5 rounded-xl text-xs font-black tracking-wider shadow-lg hover:opacity-90 transition-all flex items-center gap-1.5"
-          >
-            {loading ? "MEMUAT..." : "MUAT ULANG DATA"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleExportCSV}
+              className="bg-emerald-800 border border-emerald-700 text-emerald-300 hover:text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-md"
+            >
+              📥 EKSPOR CSV
+            </button>
+            <button
+              onClick={fetchData}
+              disabled={loading}
+              className="bg-amber-500 text-slate-950 px-5 py-2.5 rounded-xl text-xs font-black tracking-wider shadow-lg hover:opacity-90 transition-all flex items-center gap-1.5"
+            >
+              {loading ? "MEMUAT..." : "MUAT ULANG DATA"}
+            </button>
+          </div>
         </div>
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Stat 1 */}
-          <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-lg relative overflow-hidden">
+          <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-lg">
             <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Pendaftaran Pending</p>
             <h3 className="text-3xl font-black text-amber-500 mt-2">{pendingCount} Alumni</h3>
-            <p className="text-[10px] text-slate-500 mt-1">Perlu tindakan verifikasi segera</p>
+            <p className="text-[10px] text-slate-500 mt-1">Perlu verifikasi & pembuat NIA</p>
           </div>
 
-          {/* Stat 2 */}
-          <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-lg relative overflow-hidden">
+          <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-lg">
             <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Alumni Terverifikasi</p>
             <h3 className="text-3xl font-black text-emerald-400 mt-2">{verifiedCount} Alumni</h3>
-            <p className="text-[10px] text-slate-500 mt-1">Terdaftar aktif di direktori</p>
+            <p className="text-[10px] text-slate-500 mt-1">Resmi terdaftar di direktori</p>
           </div>
 
-          {/* Stat 3 */}
-          <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-lg relative overflow-hidden">
+          <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-lg">
             <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Total Iuran Terkumpul</p>
             <h3 className="text-3xl font-black text-white mt-2">Rp {totalIuran.toLocaleString("id-ID")}</h3>
-            <p className="text-[10px] text-emerald-400 mt-1">Status Keuangan: Sehat</p>
+            <p className="text-[10px] text-emerald-400 mt-1">Kas Operasional Alumni</p>
           </div>
 
-          {/* Stat 4 */}
-          <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-lg relative overflow-hidden">
+          <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-lg">
             <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Total Infak Sosial</p>
             <h3 className="text-3xl font-black text-blue-400 mt-2">Rp {totalInfak.toLocaleString("id-ID")}</h3>
-            <p className="text-[10px] text-slate-500 mt-1">Program Beasiswa & Fasilitas</p>
+            <p className="text-[10px] text-slate-500 mt-1">Beasiswa & Pembangunan</p>
           </div>
         </div>
 
-        {/* Tab Controls */}
-        <div className="flex bg-slate-900 p-1.5 rounded-xl border border-slate-800 max-w-3xl overflow-x-auto">
-          {[
-            { id: "verifikasi", label: "Verifikasi Pendaftaran", badge: pendingCount },
-            { id: "verified_list", label: "Alumni Terverifikasi", badge: verifiedCount },
-            { id: "bulk_import", label: "✨ Import Bulk & Gen NIA AI" },
-            { id: "iuran", label: "Iuran Wajib" },
-            { id: "infak", label: "Infak Alumni" },
-            { id: "konsultasi", label: "Konsultasi & Masukan", badge: konsultasi.filter((c) => c.status === "Menunggu Tanggapan").length },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 py-2 px-3.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap relative ${
-                activeTab === tab.id
-                  ? "bg-emerald-800 text-white shadow-md shadow-emerald-950/20"
-                  : "text-slate-400 hover:text-white hover:bg-slate-800/50"
-              }`}
-            >
-              {tab.label}
-              {tab.badge !== undefined && tab.badge > 0 && (
-                <span className="absolute -top-1 -right-1 bg-amber-500 text-slate-950 text-[9px] w-4.5 h-4.5 rounded-full flex items-center justify-center font-bold">
-                  {tab.badge}
-                </span>
-              )}
-            </button>
-          ))}
+        {/* Search Bar & Tab Controls Container */}
+        <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4">
+          <div className="flex bg-slate-900 p-1.5 rounded-xl border border-slate-800 overflow-x-auto flex-1 max-w-4xl">
+            {[
+              { id: "verifikasi", label: "Verifikasi Pendaftaran", badge: pendingCount },
+              { id: "verified_list", label: "Alumni Terverifikasi", badge: verifiedCount },
+              { id: "bulk_import", label: "✨ Import Bulk & Gen NIA AI" },
+              { id: "iuran", label: "Iuran Wajib" },
+              { id: "infak", label: "Infak Alumni" },
+              { id: "konsultasi", label: "Konsultasi & Masukan", badge: konsultasi.filter((c) => c.status === "Menunggu Tanggapan").length },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex-1 py-2.5 px-3.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap relative ${
+                  activeTab === tab.id
+                    ? "bg-emerald-800 text-white shadow-md shadow-emerald-950/20"
+                    : "text-slate-400 hover:text-white hover:bg-slate-800/50"
+                }`}
+              >
+                {tab.label}
+                {tab.badge !== undefined && tab.badge > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-amber-500 text-slate-950 text-[9px] w-4.5 h-4.5 rounded-full flex items-center justify-center font-bold">
+                    {tab.badge}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {(activeTab === "verifikasi" || activeTab === "verified_list") && (
+            <div className="w-full md:w-64">
+              <input
+                type="text"
+                placeholder="🔍 Cari nama, NIA, domisili..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-800 px-4 py-2.5 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+              />
+            </div>
+          )}
         </div>
 
         {/* Content Area */}
@@ -637,10 +777,10 @@ export default function AdminPortal() {
                   <div className="flex justify-between items-center pb-4 border-b border-slate-800">
                     <div>
                       <h4 className="text-base font-black text-white">Verifikasi Pendaftaran Alumni Baru</h4>
-                      <p className="text-slate-400 text-[11px] mt-0.5">Gunakan tombol &quot;⚡ Auto NIA (AI)&quot; lalu klik Setujui untuk mengkonfirmasi & mengirimkan Notifikasi WA otomatis.</p>
+                      <p className="text-slate-400 text-[11px] mt-0.5">Gunakan &quot;⚡ Auto NIA (AI)&quot; lalu klik Setujui untuk membuatkan NIA resmi dan membuka WA konfirmasi.</p>
                     </div>
                     <span className="bg-amber-500/10 border border-amber-500/20 text-amber-500 px-3 py-1 rounded-full text-[10px] font-bold">
-                      {alumni.filter((a) => a.status_verifikasi === "pending").length} menunggu verifikasi
+                      {filterAlumniByQuery(pendingList).length} pendaftaran
                     </span>
                   </div>
 
@@ -657,54 +797,51 @@ export default function AdminPortal() {
                         </tr>
                       </thead>
                       <tbody>
-                        {alumni.filter((a) => a.status_verifikasi === "pending").length > 0 ? (
-                          alumni
-                            .filter((a) => a.status_verifikasi === "pending")
-                            .map((a, idx) => (
-                              <tr key={a.id} className="border-b border-slate-800/50 hover:bg-slate-800/30">
-                                <td className="py-3 px-4 font-bold text-white">{a.nama_lengkap}</td>
-                                <td className="py-3 px-4 text-slate-300">{a.angkatan || "-"}</td>
-                                <td className="py-3 px-4 text-slate-300">{a.alamat_domisili || "-"}</td>
-                                <td className="py-3 px-4 font-mono text-slate-300">{a.nomor_hp || "-"}</td>
-                                <td className="py-3 px-4 text-slate-500 text-[10px] font-mono">{a.nomor_id_unik}</td>
-                                <td className="py-3 px-4">
-                                  <div className="flex items-center justify-center gap-2">
-                                    <input
-                                      type="text"
-                                      placeholder="Nomor NIA Baku..."
-                                      value={editingNia[a.id] || ""}
-                                      onChange={(e) =>
-                                        setEditingNia((prev) => ({ ...prev, [a.id]: e.target.value }))
-                                      }
-                                      className="bg-slate-950 border border-slate-800 py-1.5 px-2.5 rounded-lg text-amber-400 font-mono text-[11px] focus:outline-none focus:border-amber-500 w-36"
-                                    />
-                                    <button
-                                      onClick={() => handleAutoGenerateNiaSingle(a, idx)}
-                                      className="bg-amber-500/20 border border-amber-500/40 text-amber-400 px-2.5 py-1.5 rounded-lg text-[10px] font-bold hover:bg-amber-500 hover:text-slate-950 transition-all whitespace-nowrap"
-                                      title="Generate NIA Baku Otomatis Format X.YY.ZZZZ.AAAAA"
-                                    >
-                                      ⚡ Auto NIA (AI)
-                                    </button>
-                                    <button
-                                      onClick={() => handleApproveAlumni(a.id, a.nama_lengkap, a.nomor_hp)}
-                                      className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold hover:bg-emerald-500 transition-colors flex items-center gap-1 shadow-md shadow-emerald-900/30"
-                                    >
-                                      Setujui & WA
-                                    </button>
-                                    <button
-                                      onClick={() => handleRejectAlumni(a.id)}
-                                      className="bg-red-500/10 border border-red-500/20 text-red-400 px-3 py-1.5 rounded-lg text-[10px] font-bold hover:bg-red-600 hover:text-white transition-colors"
-                                    >
-                                      Tolak
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))
+                        {filterAlumniByQuery(pendingList).length > 0 ? (
+                          filterAlumniByQuery(pendingList).map((a, idx) => (
+                            <tr key={a.id} className="border-b border-slate-800/50 hover:bg-slate-800/30">
+                              <td className="py-3 px-4 font-bold text-white">{a.nama_lengkap}</td>
+                              <td className="py-3 px-4 text-slate-300">{a.angkatan || "-"}</td>
+                              <td className="py-3 px-4 text-slate-300">{a.alamat_domisili || "-"}</td>
+                              <td className="py-3 px-4 font-mono text-slate-300">{a.nomor_hp || "-"}</td>
+                              <td className="py-3 px-4 text-slate-500 text-[10px] font-mono">{a.nomor_id_unik}</td>
+                              <td className="py-3 px-4">
+                                <div className="flex items-center justify-center gap-2">
+                                  <input
+                                    type="text"
+                                    placeholder="Nomor NIA Baku..."
+                                    value={editingNia[a.id] || ""}
+                                    onChange={(e) =>
+                                      setEditingNia((prev) => ({ ...prev, [a.id]: e.target.value }))
+                                    }
+                                    className="bg-slate-950 border border-slate-800 py-1.5 px-2.5 rounded-lg text-amber-400 font-mono text-[11px] focus:outline-none focus:border-amber-500 w-36"
+                                  />
+                                  <button
+                                    onClick={() => handleAutoGenerateNiaSingle(a, idx)}
+                                    className="bg-amber-500/20 border border-amber-500/40 text-amber-400 px-2.5 py-1.5 rounded-lg text-[10px] font-bold hover:bg-amber-500 hover:text-slate-950 transition-all whitespace-nowrap"
+                                  >
+                                    ⚡ Auto NIA (AI)
+                                  </button>
+                                  <button
+                                    onClick={() => handleApproveAlumni(a.id, a.nama_lengkap, a.nomor_hp)}
+                                    className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold hover:bg-emerald-500 transition-colors shadow-md shadow-emerald-900/30"
+                                  >
+                                    Setujui & WA
+                                  </button>
+                                  <button
+                                    onClick={() => handleRejectAlumni(a.id)}
+                                    className="bg-red-500/10 border border-red-500/20 text-red-400 px-3 py-1.5 rounded-lg text-[10px] font-bold hover:bg-red-600 hover:text-white transition-colors"
+                                  >
+                                    Tolak
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))
                         ) : (
                           <tr>
                             <td colSpan={6} className="text-center py-12 text-slate-500 font-semibold">
-                              Tidak ada pengajuan pendaftaran baru yang tertunda.
+                              {searchQuery ? "Tidak ditemukan pendaftaran yang cocok." : "Tidak ada pendaftaran pending."}
                             </td>
                           </tr>
                         )}
@@ -720,11 +857,13 @@ export default function AdminPortal() {
                   <div className="flex justify-between items-center pb-4 border-b border-slate-800">
                     <div>
                       <h4 className="text-base font-black text-white">Daftar Alumni Terverifikasi (Resmi Registered)</h4>
-                      <p className="text-slate-400 text-[11px] mt-0.5">Alumni yang telah disetujui & memiliki Nomor Induk Anggota (NIA) resmi.</p>
+                      <p className="text-slate-400 text-[11px] mt-0.5">Seluruh Alumni aktif yang dapat menggunakan aplikasi mobile.</p>
                     </div>
-                    <span className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full text-[10px] font-bold">
-                      {alumni.filter((a) => a.status_verifikasi === "verified").length} Alumni Terdaftar
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full text-[10px] font-bold">
+                        {filterAlumniByQuery(verifiedList).length} Alumni
+                      </span>
+                    </div>
                   </div>
 
                   <div className="overflow-x-auto">
@@ -736,35 +875,44 @@ export default function AdminPortal() {
                           <th className="py-3 px-4">Angkatan</th>
                           <th className="py-3 px-4">Domisili</th>
                           <th className="py-3 px-4">Nomor WA</th>
-                          <th className="py-3 px-4 text-center">Status Account</th>
+                          <th className="py-3 px-4 text-center">Kelola Data</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {alumni.filter((a) => a.status_verifikasi === "verified").length > 0 ? (
-                          alumni
-                            .filter((a) => a.status_verifikasi === "verified")
-                            .map((a) => (
-                              <tr key={a.id} className="border-b border-slate-800/50 hover:bg-slate-800/30">
-                                <td className="py-3 px-4 font-bold text-white">{a.nama_lengkap}</td>
-                                <td className="py-3 px-4">
-                                  <span className="bg-amber-500/10 border border-amber-500/30 text-amber-400 font-mono font-bold px-3 py-1 rounded-lg text-xs tracking-wider">
-                                    {a.nomor_id_unik}
-                                  </span>
-                                </td>
-                                <td className="py-3 px-4 text-slate-300">{a.angkatan || "-"}</td>
-                                <td className="py-3 px-4 text-slate-300">{a.alamat_domisili || "-"}</td>
-                                <td className="py-3 px-4 font-mono text-slate-300">{a.nomor_hp || "-"}</td>
-                                <td className="py-3 px-4 text-center">
-                                  <span className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold px-2.5 py-1 rounded-full">
-                                    ✓ AKTIF & BISA LOGIN
-                                  </span>
-                                </td>
-                              </tr>
-                            ))
+                        {filterAlumniByQuery(verifiedList).length > 0 ? (
+                          filterAlumniByQuery(verifiedList).map((a) => (
+                            <tr key={a.id} className="border-b border-slate-800/50 hover:bg-slate-800/30">
+                              <td className="py-3 px-4 font-bold text-white">{a.nama_lengkap}</td>
+                              <td className="py-3 px-4">
+                                <span className="bg-amber-500/10 border border-amber-500/30 text-amber-400 font-mono font-bold px-3 py-1 rounded-lg text-xs tracking-wider">
+                                  {a.nomor_id_unik}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-slate-300">{a.angkatan || "-"}</td>
+                              <td className="py-3 px-4 text-slate-300">{a.alamat_domisili || "-"}</td>
+                              <td className="py-3 px-4 font-mono text-slate-300">{a.nomor_hp || "-"}</td>
+                              <td className="py-3 px-4 text-center">
+                                <div className="flex items-center justify-center gap-2">
+                                  <button
+                                    onClick={() => setEditModalItem(a)}
+                                    className="bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-900 px-2.5 py-1 rounded text-[10px] font-bold"
+                                  >
+                                    ✏️ Edit
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteAlumni(a)}
+                                    className="bg-red-500/10 hover:bg-red-600 hover:text-white text-red-400 border border-red-500/20 px-2.5 py-1 rounded text-[10px] font-bold"
+                                  >
+                                    🗑️ Hapus
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))
                         ) : (
                           <tr>
                             <td colSpan={6} className="text-center py-12 text-slate-500 font-semibold">
-                              Belum ada alumni yang terverifikasi.
+                              {searchQuery ? "Tidak ada alumni yang sesuai pencarian." : "Belum ada alumni yang terverifikasi."}
                             </td>
                           </tr>
                         )}
@@ -794,7 +942,6 @@ export default function AdminPortal() {
                     </button>
                   </div>
 
-                  {/* Format Rule Infobox */}
                   <div className="bg-slate-950/80 p-4 rounded-2xl border border-emerald-900/50 grid grid-cols-1 md:grid-cols-4 gap-3 text-[11px]">
                     <div className="p-2.5 bg-slate-900 rounded-xl border border-slate-800">
                       <span className="text-amber-400 font-bold block">X = Status Anggota</span>
@@ -814,7 +961,6 @@ export default function AdminPortal() {
                     </div>
                   </div>
 
-                  {/* Input Text Area */}
                   <div className="space-y-3">
                     <label className="block text-xs font-bold text-slate-300">
                       Tempelkan (Paste) Teks Dokumen Word / File CSV Di Sini:
@@ -833,28 +979,24 @@ export default function AdminPortal() {
                       </span>
                       <button
                         onClick={handleProcessBulkInput}
-                        className="bg-gradient-to-r from-emerald-600 to-emerald-700 text-white font-bold text-xs px-6 py-2.5 rounded-xl hover:opacity-90 transition-all shadow-lg shadow-emerald-950/40 flex items-center gap-2"
+                        className="bg-gradient-to-r from-emerald-600 to-emerald-700 text-white font-bold text-xs px-6 py-2.5 rounded-xl hover:opacity-90 transition-all shadow-lg flex items-center gap-2"
                       >
-                        <svg className="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                        </svg>
-                        PROSES AI PARSER & GENERATE NIA
+                        ⚡ PROSES AI PARSER & GENERATE NIA
                       </button>
                     </div>
                   </div>
 
-                  {/* Preview Table Results */}
                   {parsedItems.length > 0 && (
                     <div className="space-y-4 pt-4 border-t border-slate-800">
                       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-emerald-950/30 p-4 rounded-2xl border border-emerald-800/40">
                         <div>
                           <h5 className="font-bold text-white text-sm">Hasil Penguraian & Generator NIA ({parsedItems.length} Alumni)</h5>
-                          <p className="text-emerald-400 text-xs mt-0.5">Periksa tabel di bawah ini sebelum disimpan secara resmi ke database Supabase.</p>
+                          <p className="text-emerald-400 text-xs mt-0.5">Periksa tabel di bawah ini sebelum disimpan secara resmi.</p>
                         </div>
                         <button
                           onClick={handleSaveBulkToSupabase}
                           disabled={isSavingBulk}
-                          className="bg-amber-500 text-slate-950 font-black text-xs px-5 py-2.5 rounded-xl hover:bg-amber-400 transition-all shadow-lg shadow-amber-500/20 whitespace-nowrap"
+                          className="bg-amber-500 text-slate-950 font-black text-xs px-5 py-2.5 rounded-xl hover:bg-amber-400 transition-all shadow-lg whitespace-nowrap"
                         >
                           {isSavingBulk ? "MENYIMPAN..." : "SIMPAN SEMUA KE DATABASE"}
                         </button>
@@ -927,7 +1069,6 @@ export default function AdminPortal() {
                                       })
                                     }
                                     className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-all flex items-center justify-center gap-1 mx-auto"
-                                    title="Kirim pesan WA konfirmasi NIA resmi ke Alumni"
                                   >
                                     💬 WA
                                   </button>
@@ -946,8 +1087,16 @@ export default function AdminPortal() {
               {activeTab === "iuran" && (
                 <div className="space-y-4">
                   <div className="flex justify-between items-center pb-4 border-b border-slate-800">
-                    <h4 className="text-base font-black text-white">Laporan & Pengumpulkan Iuran Wajib</h4>
-                    <span className="text-emerald-400 font-bold text-xs">Target: Rp 25.000 / Bulan</span>
+                    <div>
+                      <h4 className="text-base font-black text-white">Laporan & Catatan Iuran Wajib</h4>
+                      <p className="text-slate-400 text-[11px] mt-0.5">Nominal Iuran Wajib Rp 25.000 / Bulan per Alumni.</p>
+                    </div>
+                    <button
+                      onClick={() => setShowAddIuranModal(true)}
+                      className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-md transition-all"
+                    >
+                      + Tambah Transaksi Iuran
+                    </button>
                   </div>
 
                   <div className="overflow-x-auto">
@@ -970,13 +1119,28 @@ export default function AdminPortal() {
                               <td className="py-3 px-4 text-slate-300">{i.periode}</td>
                               <td className="py-3 px-4 font-mono font-bold text-white">Rp {(Number(i.nominal) || 0).toLocaleString("id-ID")}</td>
                               <td className="py-3 px-4">
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                  i.status === "lunas"
-                                    ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400"
-                                    : "bg-rose-500/10 border border-rose-500/20 text-rose-400"
-                                }`}>
-                                  {i.status === "lunas" ? "LUNAS" : "BELUM LUNAS"}
-                                </span>
+                                <button
+                                  onClick={() => {
+                                    setIuran((prev) =>
+                                      prev.map((item) =>
+                                        item.id === i.id
+                                          ? {
+                                              ...item,
+                                              status: item.status === "lunas" ? "belum_bayar" : "lunas",
+                                              paid_at: item.status === "lunas" ? null : new Date().toISOString(),
+                                            }
+                                          : item
+                                      )
+                                    );
+                                  }}
+                                  className={`px-2.5 py-1 rounded text-[10px] font-bold border transition-all ${
+                                    i.status === "lunas"
+                                      ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20"
+                                      : "bg-rose-500/10 border-rose-500/30 text-rose-400 hover:bg-rose-500/20"
+                                  }`}
+                                >
+                                  {i.status === "lunas" ? "✓ LUNAS" : "BELUM LUNAS"}
+                                </button>
                               </td>
                               <td className="py-3 px-4 text-slate-400">
                                 {i.paid_at ? new Date(i.paid_at).toLocaleString("id-ID") : "-"}
@@ -1087,9 +1251,6 @@ export default function AdminPortal() {
                           {item.tanggapan ? (
                             <div className="bg-emerald-950/20 p-4 rounded-xl border border-emerald-900/40 text-xs text-slate-300 space-y-1">
                               <div className="flex items-center gap-1 text-emerald-400 font-bold mb-1">
-                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                                </svg>
                                 Tanggapan Admin Pusat:
                               </div>
                               <p className="italic">&quot;{item.tanggapan}&quot;</p>
@@ -1106,7 +1267,7 @@ export default function AdminPortal() {
                               />
                               <button
                                 onClick={() => handleReplyConsultation(item.id)}
-                                className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-emerald-500 transition-colors shadow-lg shadow-emerald-950/30"
+                                className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-emerald-500 transition-colors shadow-lg"
                               >
                                 Kirim Tanggapan Resmi
                               </button>
@@ -1126,6 +1287,178 @@ export default function AdminPortal() {
           )}
         </div>
       </main>
+
+      {/* Modal Edit Alumni */}
+      {editModalItem && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl max-w-lg w-full space-y-4 shadow-2xl">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-800">
+              <h3 className="text-base font-black text-white">Edit Data Alumni</h3>
+              <button
+                onClick={() => setEditModalItem(null)}
+                className="text-slate-400 hover:text-white text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditAlumni} className="space-y-4">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">Nama Lengkap</label>
+                <input
+                  type="text"
+                  value={editModalItem.nama_lengkap}
+                  onChange={(e) => setEditModalItem({ ...editModalItem, nama_lengkap: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 p-3 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-300 mb-1">NIA Resmi</label>
+                  <input
+                    type="text"
+                    value={editModalItem.nomor_id_unik}
+                    onChange={(e) => setEditModalItem({ ...editModalItem, nomor_id_unik: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 p-3 rounded-xl text-xs text-amber-400 font-mono focus:outline-none focus:border-amber-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-300 mb-1">Angkatan (Tahun)</label>
+                  <input
+                    type="number"
+                    value={editModalItem.angkatan || 2024}
+                    onChange={(e) => setEditModalItem({ ...editModalItem, angkatan: parseInt(e.target.value) || 2024 })}
+                    className="w-full bg-slate-950 border border-slate-800 p-3 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-300 mb-1">Nomor WhatsApp</label>
+                  <input
+                    type="text"
+                    value={editModalItem.nomor_hp || ""}
+                    onChange={(e) => setEditModalItem({ ...editModalItem, nomor_hp: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 p-3 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-300 mb-1">Domisili</label>
+                  <input
+                    type="text"
+                    value={editModalItem.alamat_domisili || ""}
+                    onChange={(e) => setEditModalItem({ ...editModalItem, alamat_domisili: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 p-3 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">Status Verifikasi</label>
+                <select
+                  value={editModalItem.status_verifikasi}
+                  onChange={(e) => setEditModalItem({ ...editModalItem, status_verifikasi: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 p-3 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                >
+                  <option value="verified">Verified (Terdaftar Aktif)</option>
+                  <option value="pending">Pending (Menunggu Verifikasi)</option>
+                  <option value="rejected">Rejected (Ditolak)</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setEditModalItem(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-lg"
+                >
+                  Simpan Perubahan
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Tambah Iuran */}
+      {showAddIuranModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl max-w-md w-full space-y-4 shadow-2xl">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-800">
+              <h3 className="text-base font-black text-white">Tambah Catatan Iuran</h3>
+              <button
+                onClick={() => setShowAddIuranModal(false)}
+                className="text-slate-400 hover:text-white text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveAddIuran} className="space-y-4">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">Nama Alumni</label>
+                <input
+                  type="text"
+                  placeholder="Masukkan nama alumni..."
+                  value={newIuranNama}
+                  onChange={(e) => setNewIuranNama(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 p-3 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-300 mb-1">Periode</label>
+                  <input
+                    type="text"
+                    value={newIuranPeriode}
+                    onChange={(e) => setNewIuranPeriode(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 p-3 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-300 mb-1">Nominal (Rp)</label>
+                  <input
+                    type="number"
+                    value={newIuranNominal}
+                    onChange={(e) => setNewIuranNominal(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 p-3 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowAddIuranModal(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-lg"
+                >
+                  Simpan Transaksi
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Footer */}
       <footer className="bg-emerald-950/30 border-t border-emerald-900/50 py-4 text-center text-[10px] text-slate-500">
