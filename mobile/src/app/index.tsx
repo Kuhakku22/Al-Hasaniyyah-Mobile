@@ -56,8 +56,11 @@ export default function LoginScreen() {
       const cloudVerified = await getCloudVerifiedAlumni();
       const cloudPending = await getCloudPendingRegistrations();
 
-      // Tambahkan data fallback Alumni Terverifikasi utama (Ahmad Ali & Ahmad Baidlowi)
-      const verifiedList = [
+      // Utamakan cloudVerified dari store agar alumni yang baru disetujui Admin berada di urutan terdepan
+      const verifiedList = [...cloudVerified];
+
+      // Tambahkan fallback utama jika belum ada di cloudVerified
+      const defaultFallbacks = [
         {
           id: 'ver-ahmad-ali',
           nama_lengkap: 'Ahmad Ali',
@@ -66,6 +69,7 @@ export default function LoginScreen() {
           status_verifikasi: 'verified',
           angkatan: 2025,
           alamat_domisili: 'Pasuruan Jawa Timur',
+          created_at: new Date().toISOString(),
         },
         {
           id: 'ver-ahmad-baidlowi',
@@ -75,6 +79,7 @@ export default function LoginScreen() {
           status_verifikasi: 'verified',
           angkatan: 2018,
           alamat_domisili: 'Pasuruan Jawa Timur',
+          created_at: new Date().toISOString(),
         },
         {
           id: 'ver-yahya-ilyas',
@@ -84,69 +89,127 @@ export default function LoginScreen() {
           status_verifikasi: 'verified',
           angkatan: 2024,
           alamat_domisili: 'Pasuruan Jawa Timur',
+          created_at: new Date().toISOString(),
         },
-        ...cloudVerified,
       ];
 
-      const inputNameLower = cleanNama.toLowerCase();
+      defaultFallbacks.forEach((fb) => {
+        if (!verifiedList.some((v) => v.nomor_id_unik === fb.nomor_id_unik || v.nomor_hp === fb.nomor_hp)) {
+          verifiedList.push(fb);
+        }
+      });
+
+      const inputNameLower = cleanNama.toLowerCase().trim();
       const cleanDigits = cleanId.replace(/\D/g, '');
 
-      // Helper Pencocokan Nama Fleksibel
-      const checkNameMatch = (dbName: string) => {
+      // Helper Pencocokan Nama Akurat (Presisi & Fleksibel)
+      const checkNameMatchAccurate = (dbName: string) => {
         const target = (dbName || '').toLowerCase().trim();
         if (!target || !inputNameLower) return false;
+
+        // Exact / Substring penuh
         if (target === inputNameLower || target.includes(inputNameLower) || inputNameLower.includes(target)) return true;
+
+        // Check kata kunci utama pada nama (mengabaikan kata umum jika ada kata spesifik)
         const inputWords = inputNameLower.split(/\s+/).filter((w) => w.length >= 2);
-        return inputWords.some((w) => target.includes(w));
+        const targetWords = target.split(/\s+/).filter((w) => w.length >= 2);
+
+        if (inputWords.length === 0 || targetWords.length === 0) return false;
+
+        const commonWords = new Set(['ahmad', 'muhammad', 'moch', 'm', 'h', 'haji', 'ustadz', 'bin', 'binti']);
+        const significantInputWords = inputWords.filter((w) => !commonWords.has(w));
+
+        if (significantInputWords.length > 0) {
+          return significantInputWords.every((w) => target.includes(w));
+        }
+
+        return inputWords.every((w) => target.includes(w));
       };
 
-      // A. Cek di Alumni Terverifikasi (by NIA, No. WA, ID, atau Nama)
-      const verifiedMatch = verifiedList.find((a) => {
+      // -------------------------------------------------------------
+      // STRATEGI PENCARIAN 1: Cari berdasarkan ID Unik (NIA / No. WA) terlebih dahulu
+      // -------------------------------------------------------------
+      let foundById = verifiedList.find((a) => {
         const niaClean = (a.nomor_id_unik || '').replace(/\D/g, '');
         const phoneClean = (a.nomor_hp || '').replace(/\D/g, '');
 
         const matchNiaExact = a.nomor_id_unik && a.nomor_id_unik.trim() === cleanId;
-        const matchNiaDigits = cleanDigits.length >= 3 && niaClean.includes(cleanDigits);
-        const matchPhone = cleanDigits.length >= 4 && phoneClean.includes(cleanDigits);
-        const matchName = checkNameMatch(a.nama_lengkap);
+        const matchNiaDigits = cleanDigits.length >= 5 && niaClean.includes(cleanDigits);
+        const matchPhone = cleanDigits.length >= 6 && (phoneClean.endsWith(cleanDigits) || phoneClean.includes(cleanDigits));
 
-        return matchNiaExact || matchNiaDigits || matchPhone || (matchName && (cleanDigits.length >= 2 || cleanId.length >= 2));
+        return matchNiaExact || matchNiaDigits || matchPhone;
       });
 
-      if (verifiedMatch) {
-        if (!checkNameMatch(verifiedMatch.nama_lengkap)) {
-          Alert.alert('Login Gagal', `Nama Alumni "${cleanNama}" dan NIA/No.WA "${cleanId}" tidak cocok.`);
+      if (foundById) {
+        // Validasi apakah Nama cocok dengan ID yang ditemukan
+        if (checkNameMatchAccurate(foundById.nama_lengkap)) {
+          await AsyncStorage.setItem('userToken', foundById.id || 'usr-' + Date.now());
+          await AsyncStorage.setItem('userProfile', JSON.stringify(foundById));
+          Alert.alert('Login Berhasil', `Selamat datang, ${foundById.nama_lengkap}!`);
+          router.replace('/(tabs)/home');
+          return;
+        } else {
+          // ID ditemukan tapi Nama tidak cocok -> Tolak login demi privasi tanpa membocorkan nama pemilik lain
+          Alert.alert(
+            'Login Ditolak',
+            `Nomor Induk/WA "${cleanId}" sudah terdaftar dengan nama alumni lain. Silakan periksa kembali Nama dan Nomor Induk/WA yang Anda masukkan.`
+          );
           return;
         }
-
-        await AsyncStorage.setItem('userToken', verifiedMatch.id || 'usr-' + Date.now());
-        await AsyncStorage.setItem('userProfile', JSON.stringify(verifiedMatch));
-        Alert.alert('Login Berhasil', `Selamat datang, ${verifiedMatch.nama_lengkap}!`);
-        router.replace('/(tabs)/home');
-        return;
       }
 
-      // B. Cek di Alumni Pending (Pendaftaran sedang diproses Admin)
+      // -------------------------------------------------------------
+      // STRATEGI PENCARIAN 2: Cari berdasarkan Nama Lengkap yang cocok akurat
+      // -------------------------------------------------------------
+      let foundByName = verifiedList.find((a) => checkNameMatchAccurate(a.nama_lengkap));
+
+      if (foundByName) {
+        const niaClean = (foundByName.nomor_id_unik || '').replace(/\D/g, '');
+        const phoneClean = (foundByName.nomor_hp || '').replace(/\D/g, '');
+
+        const matchNiaExact = foundByName.nomor_id_unik && foundByName.nomor_id_unik.trim() === cleanId;
+        const matchNiaDigits = cleanDigits.length >= 3 && niaClean.includes(cleanDigits);
+        const matchPhone = cleanDigits.length >= 4 && (phoneClean.endsWith(cleanDigits) || phoneClean.includes(cleanDigits));
+
+        if (matchNiaExact || matchNiaDigits || matchPhone) {
+          await AsyncStorage.setItem('userToken', foundByName.id || 'usr-' + Date.now());
+          await AsyncStorage.setItem('userProfile', JSON.stringify(foundByName));
+          Alert.alert('Login Berhasil', `Selamat datang, ${foundByName.nama_lengkap}!`);
+          router.replace('/(tabs)/home');
+          return;
+        } else {
+          Alert.alert(
+            'Verifikasi Identitas Gagal',
+            `Nama "${cleanNama}" ditemukan, namun Nomor Induk/WA "${cleanId}" tidak cocok dengan data terdaftar Anda.`
+          );
+          return;
+        }
+      }
+
+      // -------------------------------------------------------------
+      // STRATEGI PENCARIAN 3: Cek di Pendaftaran Pending (Menunggu Verifikasi Admin)
+      // -------------------------------------------------------------
       const pendingMatch = cloudPending.find((a) => {
         const niaClean = (a.nomor_id_unik || '').replace(/\D/g, '');
         const phoneClean = (a.nomor_hp || '').replace(/\D/g, '');
-        return (
-          (a.nomor_id_unik && a.nomor_id_unik.trim() === cleanId) ||
-          (cleanDigits.length >= 4 && niaClean.includes(cleanDigits)) ||
-          (cleanDigits.length >= 4 && phoneClean.includes(cleanDigits)) ||
-          checkNameMatch(a.nama_lengkap)
-        );
+
+        const matchPhone = cleanDigits.length >= 6 && phoneClean.includes(cleanDigits);
+        const matchName = checkNameMatchAccurate(a.nama_lengkap);
+
+        return matchPhone || (matchName && cleanDigits.length >= 4);
       });
 
       if (pendingMatch) {
         Alert.alert(
           'Pendaftaran Masih Pending',
-          `Akun atas nama ${pendingMatch.nama_lengkap} sudah terdaftar dan sedang menunggu verifikasi/persetujuan Admin di Portal Pusat.`
+          `Akun atas nama ${pendingMatch.nama_lengkap} sudah terdaftar dan sedang dalam proses verifikasi/persetujuan Admin di Portal Pusat.`
         );
         return;
       }
 
-      // C. Fallback Database Supabase
+      // -------------------------------------------------------------
+      // STRATEGI PENCARIAN 4: Fallback Database Supabase
+      // -------------------------------------------------------------
       let dbData = null;
       try {
         const { data } = await supabase.from('alumni').select('*').eq('nomor_id_unik', cleanId).single();
@@ -154,8 +217,11 @@ export default function LoginScreen() {
       } catch (err) {}
 
       if (dbData) {
-        if (!checkNameMatch(dbData.nama_lengkap)) {
-          Alert.alert('Login Gagal', 'Nama Alumni dan Nomor Induk Anggota (NIA) tidak cocok.');
+        if (!checkNameMatchAccurate(dbData.nama_lengkap)) {
+          Alert.alert(
+            'Login Ditolak',
+            `Nomor Induk/WA "${cleanId}" sudah terdaftar dengan nama alumni lain. Silakan periksa kembali Nama dan Nomor Induk/WA yang Anda masukkan.`
+          );
           return;
         }
 
