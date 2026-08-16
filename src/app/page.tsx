@@ -368,6 +368,7 @@ export default function AdminPortal() {
       alamat_domisili: editModalItem.alamat_domisili,
       status_verifikasi: editModalItem.status_verifikasi,
       nomor_hp: editModalItem.nomor_hp,
+      foto_profil: editModalItem.foto_profil || null,
       created_at: new Date().toISOString(),
     };
 
@@ -387,6 +388,7 @@ export default function AdminPortal() {
           alamat_domisili: updated.alamat_domisili,
           status_verifikasi: updated.status_verifikasi,
           nomor_hp: updated.nomor_hp,
+          foto_profil: updated.foto_profil,
           updated_at: new Date().toISOString(),
         })
         .eq("id", updated.id);
