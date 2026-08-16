@@ -18,8 +18,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '@/lib/supabase';
+
+// Safely load Expo ImagePicker to ensure zero build errors on Vercel / Web
+let ImagePicker: any = null;
+try {
+  ImagePicker = require('expo-image-picker');
+} catch (e) {}
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -73,58 +78,89 @@ export default function ProfileScreen() {
     loadProfile();
   }, []);
 
-  // Pick Image from Device Gallery
+  // Universal Image Picker (Supports HTML5 File Reader on Web + Expo ImagePicker on Mobile)
   const pickImageFromGallery = async () => {
-    try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Izin Ditolak', 'Mohon izinkan akses galeri foto untuk mengunggah foto profil.');
+    // 1. Browser Web HTML5 Native File Picker Fallback
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      try {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.onchange = (e: any) => {
+          const file = e.target?.files?.[0];
+          if (file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              if (event.target?.result) {
+                setEditData((prev) => ({ ...prev, fotoProfil: event.target!.result as string }));
+                setShowImagePickerModal(false);
+              }
+            };
+            reader.readAsDataURL(file);
+          }
+        };
+        input.click();
         return;
-      }
+      } catch (webErr) {}
+    }
 
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.7,
-        base64: true,
-      });
+    // 2. Native Expo ImagePicker
+    if (ImagePicker) {
+      try {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Izin Ditolak', 'Mohon izinkan akses galeri foto untuk mengunggah foto profil.');
+          return;
+        }
 
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
-        const imageUri = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
-        setEditData((prev) => ({ ...prev, fotoProfil: imageUri }));
-        setShowImagePickerModal(false);
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.7,
+          base64: true,
+        });
+
+        if (!result.canceled && result.assets && result.assets.length > 0) {
+          const asset = result.assets[0];
+          const imageUri = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
+          setEditData((prev) => ({ ...prev, fotoProfil: imageUri }));
+          setShowImagePickerModal(false);
+        }
+      } catch (e: any) {
+        Alert.alert('Gagal Pilih Gambar', e.message || 'Terjadi kesalahan saat memilih gambar.');
       }
-    } catch (e: any) {
-      Alert.alert('Gagal Pilih Gambar', e.message || 'Terjadi kesalahan saat memilih gambar.');
     }
   };
 
   // Capture Image from Camera
   const takePhotoWithCamera = async () => {
-    try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Izin Ditolak', 'Mohon izinkan akses kamera untuk mengambil foto profil.');
-        return;
-      }
+    if (ImagePicker) {
+      try {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Izin Ditolak', 'Mohon izinkan akses kamera untuk mengambil foto profil.');
+          return;
+        }
 
-      const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.7,
-        base64: true,
-      });
+        const result = await ImagePicker.launchCameraAsync({
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.7,
+          base64: true,
+        });
 
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
-        const imageUri = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
-        setEditData((prev) => ({ ...prev, fotoProfil: imageUri }));
-        setShowImagePickerModal(false);
+        if (!result.canceled && result.assets && result.assets.length > 0) {
+          const asset = result.assets[0];
+          const imageUri = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
+          setEditData((prev) => ({ ...prev, fotoProfil: imageUri }));
+          setShowImagePickerModal(false);
+        }
+      } catch (e: any) {
+        Alert.alert('Gagal Ambil Foto', e.message || 'Terjadi kesalahan saat mengambil foto.');
       }
-    } catch (e: any) {
-      Alert.alert('Gagal Ambil Foto', e.message || 'Terjadi kesalahan saat mengambil foto.');
+    } else {
+      pickImageFromGallery();
     }
   };
 
@@ -377,7 +413,7 @@ export default function ProfileScreen() {
                   style={styles.modalInput}
                   placeholder="https://example.com/foto.jpg atau biarkan kosong"
                   placeholderTextColor="#94A3B8"
-                  value={editData.fotoProfil.startsWith('data:') ? '[Foto Berhasil Diunggah dari Perangkat]' : editData.fotoProfil}
+                  value={editData.fotoProfil.startsWith('data:') ? '[Foto Berhasil Diunggah]' : editData.fotoProfil}
                   onChangeText={(t) => setEditData({ ...editData, fotoProfil: t })}
                 />
               </View>
@@ -471,7 +507,7 @@ export default function ProfileScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.pickerOptionTitle}>Pilih dari Galeri Foto</Text>
-                <Text style={styles.pickerOptionSub}>Ambil foto yang sudah tersimpan di HP</Text>
+                <Text style={styles.pickerOptionSub}>Ambil foto yang sudah tersimpan di HP / Komputer</Text>
               </View>
             </TouchableOpacity>
 
@@ -763,7 +799,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justify.content: 'center',
     gap: 8,
     marginBottom: 16,
   },
@@ -880,7 +916,7 @@ const styles = StyleSheet.create({
   settingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justify.content: 'space-between',
+    justifyContent: 'space-between',
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
