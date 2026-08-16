@@ -20,6 +20,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { addCloudVerifiedAlumni } from '@/lib/cloudSync';
+import { compressImageBase64, savePersistentAvatar, getPersistentAvatar } from '@/lib/imageUtils';
 
 // Safely load Expo ImagePicker to ensure zero build errors on Vercel / Web
 let ImagePicker: any = null;
@@ -59,6 +60,13 @@ export default function ProfileScreen() {
       const storedProfile = await AsyncStorage.getItem('userProfile');
       if (storedProfile) {
         const parsed = JSON.parse(storedProfile);
+        
+        // Baca foto profil persisten dari penyimpanan lokal terdedikasi
+        const persistentPhoto = await getPersistentAvatar(parsed.nomor_id_unik || parsed.nomor_hp);
+        if (persistentPhoto) {
+          parsed.foto_profil = persistentPhoto;
+        }
+
         setUserProfile(parsed);
         setEditData({
           nama: parsed.nama_lengkap || '',
@@ -97,9 +105,11 @@ export default function ProfileScreen() {
           const file = e.target?.files?.[0];
           if (file) {
             const reader = new FileReader();
-            reader.onload = (event) => {
+            reader.onload = async (event) => {
               if (event.target?.result) {
-                setEditData((prev) => ({ ...prev, fotoProfil: event.target!.result as string }));
+                const rawUri = event.target.result as string;
+                const compressed = await compressImageBase64(rawUri);
+                setEditData((prev) => ({ ...prev, fotoProfil: compressed }));
                 setShowImagePickerModal(false);
               }
             };
@@ -124,14 +134,15 @@ export default function ProfileScreen() {
           mediaTypes: ['images'],
           allowsEditing: true,
           aspect: [1, 1],
-          quality: 0.7,
+          quality: 0.6,
           base64: true,
         });
 
         if (!result.canceled && result.assets && result.assets.length > 0) {
           const asset = result.assets[0];
-          const imageUri = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
-          setEditData((prev) => ({ ...prev, fotoProfil: imageUri }));
+          const rawUri = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
+          const compressed = await compressImageBase64(rawUri);
+          setEditData((prev) => ({ ...prev, fotoProfil: compressed }));
           setShowImagePickerModal(false);
         }
       } catch (e: any) {
@@ -153,14 +164,15 @@ export default function ProfileScreen() {
         const result = await ImagePicker.launchCameraAsync({
           allowsEditing: true,
           aspect: [1, 1],
-          quality: 0.7,
+          quality: 0.6,
           base64: true,
         });
 
         if (!result.canceled && result.assets && result.assets.length > 0) {
           const asset = result.assets[0];
-          const imageUri = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
-          setEditData((prev) => ({ ...prev, fotoProfil: imageUri }));
+          const rawUri = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
+          const compressed = await compressImageBase64(rawUri);
+          setEditData((prev) => ({ ...prev, fotoProfil: compressed }));
           setShowImagePickerModal(false);
         }
       } catch (e: any) {
@@ -179,7 +191,8 @@ export default function ProfileScreen() {
 
     setLoading(true);
     try {
-      const finalFoto = editData.fotoProfil || userProfile?.foto_profil || '';
+      const rawFoto = editData.fotoProfil || userProfile?.foto_profil || '';
+      const finalFoto = await compressImageBase64(rawFoto);
 
       const updatedProfile = {
         ...userProfile,
@@ -192,8 +205,9 @@ export default function ProfileScreen() {
         foto_profil: finalFoto,
       };
 
-      // 1. Simpan ke Local Device Storage
+      // 1. Simpan ke Local Device Storage & Kunci Penyimpanan Persisten
       await AsyncStorage.setItem('userProfile', JSON.stringify(updatedProfile));
+      await savePersistentAvatar(updatedProfile.nomor_id_unik || updatedProfile.nomor_hp, finalFoto);
       setUserProfile(updatedProfile);
 
       // 2. Simpan PERMANEN ke Cloud Verified Store Vercel (/api/verified)
@@ -232,7 +246,7 @@ export default function ProfileScreen() {
       } catch (dbErr) {}
 
       setShowEditModal(false);
-      Alert.alert('Berhasil Simpan', 'Profil & Foto Anggota berhasil disimpan permanen ke server database!');
+      Alert.alert('Berhasil Simpan', 'Profil & Foto Anggota berhasil disimpan permanen!');
     } catch (e: any) {
       Alert.alert('Gagal Simpan', e.message);
     } finally {
@@ -284,6 +298,9 @@ export default function ProfileScreen() {
     });
   };
 
+  // Prioritas Tampilan Foto Profil Terbaru
+  const activePhoto = editData.fotoProfil || userProfile?.foto_profil || '';
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header Bar */}
@@ -299,9 +316,9 @@ export default function ProfileScreen() {
             onPress={() => setShowEditModal(true)}
             activeOpacity={0.8}
           >
-            {userProfile?.foto_profil || editData.fotoProfil ? (
+            {activePhoto ? (
               <Image 
-                source={{ uri: userProfile?.foto_profil || editData.fotoProfil }} 
+                source={{ uri: activePhoto }} 
                 style={styles.avatarImage} 
               />
             ) : (
@@ -411,10 +428,8 @@ export default function ProfileScreen() {
               {/* Photo Input Area */}
               <View style={styles.photoUploadContainer}>
                 <View style={styles.previewAvatarBox}>
-                  {editData.fotoProfil ? (
-                    <Image source={{ uri: editData.fotoProfil }} style={styles.previewAvatarImage} />
-                  ) : userProfile?.foto_profil ? (
-                    <Image source={{ uri: userProfile.foto_profil }} style={styles.previewAvatarImage} />
+                  {activePhoto ? (
+                    <Image source={{ uri: activePhoto }} style={styles.previewAvatarImage} />
                   ) : (
                     <View style={styles.previewAvatarPlaceholder}>
                       <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 24 }}>
@@ -583,9 +598,9 @@ export default function ProfileScreen() {
               </View>
 
               <View style={{ flexDirection: 'row', gap: 14, alignItems: 'center', marginBottom: 16 }}>
-                {userProfile?.foto_profil || editData.fotoProfil ? (
+                {activePhoto ? (
                   <Image 
-                    source={{ uri: userProfile?.foto_profil || editData.fotoProfil }} 
+                    source={{ uri: activePhoto }} 
                     style={styles.idAvatarImage} 
                   />
                 ) : (

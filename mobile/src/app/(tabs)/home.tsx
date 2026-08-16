@@ -5,6 +5,8 @@ import { RefreshControl, ScrollView, StatusBar, Text, TouchableOpacity, View, Im
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { getPersistentAvatar } from '@/lib/imageUtils';
+
 export default function Home() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
@@ -16,7 +18,12 @@ export default function Home() {
     try {
       const storedProfile = await AsyncStorage.getItem('userProfile');
       if (storedProfile) {
-        setUserProfile(JSON.parse(storedProfile));
+        const parsed = JSON.parse(storedProfile);
+        const persistentPhoto = await getPersistentAvatar(parsed.nomor_id_unik || parsed.nomor_hp);
+        if (persistentPhoto) {
+          parsed.foto_profil = persistentPhoto;
+        }
+        setUserProfile(parsed);
       }
     } catch (e) {
       console.error(e);
