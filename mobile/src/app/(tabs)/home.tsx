@@ -100,11 +100,15 @@ export default function Home() {
 
           {/* User Info */}
           <View className="px-5 mb-6 flex-row items-center gap-3">
-            <View className="w-12 h-12 rounded-full bg-emerald-700 items-center justify-center border-2 border-emerald-500/50">
-              <Text className="text-white font-bold text-lg">
-                {getInitials(userProfile?.nama_lengkap || 'Ahmad Ali')}
-              </Text>
-            </View>
+            {userProfile?.foto_profil ? (
+              <Image source={{ uri: userProfile.foto_profil }} className="w-12 h-12 rounded-full border-2 border-amber-400" />
+            ) : (
+              <View className="w-12 h-12 rounded-full bg-emerald-700 items-center justify-center border-2 border-emerald-500/50">
+                <Text className="text-white font-bold text-lg">
+                  {getInitials(userProfile?.nama_lengkap || 'Ahmad Ali')}
+                </Text>
+              </View>
+            )}
             <View>
               <Text className="text-white font-bold text-lg">
                 {userProfile?.nama_lengkap || 'Ahmad Ali'}

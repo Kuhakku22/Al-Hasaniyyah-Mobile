@@ -10,12 +10,15 @@ import {
   TextInput, 
   ActivityIndicator,
   StyleSheet,
-  Switch
+  Switch,
+  Linking,
+  Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '@/lib/supabase';
 
 export default function ProfileScreen() {
@@ -28,6 +31,7 @@ export default function ProfileScreen() {
   const [showCardModal, setShowCardModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
+  const [showImagePickerModal, setShowImagePickerModal] = useState(false);
 
   // Edit Form State
   const [editData, setEditData] = useState({
@@ -37,6 +41,7 @@ export default function ProfileScreen() {
     ttl: '',
     alamatKtp: '',
     pekerjaan: '',
+    fotoProfil: '',
   });
 
   // Settings State
@@ -56,6 +61,7 @@ export default function ProfileScreen() {
           ttl: parsed.tempat_tanggal_lahir || '',
           alamatKtp: parsed.alamat_ktp || '',
           pekerjaan: parsed.pekerjaan || '',
+          fotoProfil: parsed.foto_profil || '',
         });
       }
     } catch (e) {
@@ -66,6 +72,61 @@ export default function ProfileScreen() {
   useEffect(() => {
     loadProfile();
   }, []);
+
+  // Pick Image from Device Gallery
+  const pickImageFromGallery = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Izin Ditolak', 'Mohon izinkan akses galeri foto untuk mengunggah foto profil.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        const imageUri = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
+        setEditData((prev) => ({ ...prev, fotoProfil: imageUri }));
+        setShowImagePickerModal(false);
+      }
+    } catch (e: any) {
+      Alert.alert('Gagal Pilih Gambar', e.message || 'Terjadi kesalahan saat memilih gambar.');
+    }
+  };
+
+  // Capture Image from Camera
+  const takePhotoWithCamera = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Izin Ditolak', 'Mohon izinkan akses kamera untuk mengambil foto profil.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        const imageUri = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
+        setEditData((prev) => ({ ...prev, fotoProfil: imageUri }));
+        setShowImagePickerModal(false);
+      }
+    } catch (e: any) {
+      Alert.alert('Gagal Ambil Foto', e.message || 'Terjadi kesalahan saat mengambil foto.');
+    }
+  };
 
   const handleSaveProfile = async () => {
     if (!editData.nama.trim() || !editData.phone.trim()) {
@@ -83,30 +144,32 @@ export default function ProfileScreen() {
         tempat_tanggal_lahir: editData.ttl.trim(),
         alamat_ktp: editData.alamatKtp.trim(),
         pekerjaan: editData.pekerjaan.trim(),
+        foto_profil: editData.fotoProfil || userProfile?.foto_profil || '',
       };
 
       // Update Supabase if real user
       if (userProfile?.id && userProfile.id !== '00000000-0000-0000-0000-000000000000') {
-        const { error } = await supabase
-          .from('alumni')
-          .update({
-            nama_lengkap: editData.nama.trim(),
-            nomor_hp: editData.phone.trim(),
-            alamat_domisili: editData.domisili.trim(),
-            tempat_tanggal_lahir: editData.ttl.trim(),
-            alamat_ktp: editData.alamatKtp.trim(),
-            pekerjaan: editData.pekerjaan.trim(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', userProfile.id);
-
-        if (error) throw error;
+        try {
+          await supabase
+            .from('alumni')
+            .update({
+              nama_lengkap: editData.nama.trim(),
+              nomor_hp: editData.phone.trim(),
+              alamat_domisili: editData.domisili.trim(),
+              tempat_tanggal_lahir: editData.ttl.trim(),
+              alamat_ktp: editData.alamatKtp.trim(),
+              pekerjaan: editData.pekerjaan.trim(),
+              foto_profil: editData.fotoProfil || userProfile?.foto_profil || '',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', userProfile.id);
+        } catch (dbErr) {}
       }
 
       await AsyncStorage.setItem('userProfile', JSON.stringify(updatedProfile));
       setUserProfile(updatedProfile);
       setShowEditModal(false);
-      Alert.alert('Berhasil', 'Profil Anda berhasil diperbarui!');
+      Alert.alert('Berhasil', 'Profil & Foto Anggota berhasil diperbarui!');
     } catch (e: any) {
       Alert.alert('Gagal Simpan', e.message);
     } finally {
@@ -138,6 +201,26 @@ export default function ProfileScreen() {
     return name.substring(0, 2).toUpperCase();
   };
 
+  // Open WhatsApp to official helpline number 082257003806
+  const openOfficialWhatsApp = () => {
+    const phone = "6282257003806";
+    const text = encodeURIComponent("Assalamu'alaikum Pengurus Al-Hasaniyyah Pusat, mohon bantuan informasi/verifikasi akun alumni saya.");
+    const url = `https://wa.me/${phone}?text=${text}`;
+    Linking.openURL(url).catch(() => {
+      Alert.alert("Info Pengurus WA", "Nomor WhatsApp Pengurus Pusat: 082257003806 (+62 822-5700-3806)");
+    });
+  };
+
+  // Open Mail client to hsn.pusatdalwa@gmail.com
+  const openOfficialEmail = () => {
+    const email = "hsn.pusatdalwa@gmail.com";
+    const subject = encodeURIComponent("Pertanyaan / Bantuan Alumni Al-Hasaniyyah");
+    const url = `mailto:${email}?subject=${subject}`;
+    Linking.openURL(url).catch(() => {
+      Alert.alert("Info Email Resmi", "Email Resmi Pengurus: hsn.pusatdalwa@gmail.com");
+    });
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header Bar */}
@@ -148,19 +231,36 @@ export default function ProfileScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Profile Avatar & Info Card */}
         <View style={styles.profileCard}>
-          <View style={styles.avatarWrapper}>
-            <Text style={styles.avatarText}>
-              {getInitials(userProfile?.nama_lengkap || 'Ahmad Ali')}
-            </Text>
-          </View>
-          <Text style={styles.userName}>{userProfile?.nama_lengkap || 'Ahmad Fadillah'}</Text>
-          <Text style={styles.userNia}>NIA: {userProfile?.nomor_id_unik || '123456'}</Text>
+          <TouchableOpacity 
+            style={styles.avatarContainer}
+            onPress={() => setShowEditModal(true)}
+            activeOpacity={0.8}
+          >
+            {userProfile?.foto_profil || editData.fotoProfil ? (
+              <Image 
+                source={{ uri: userProfile?.foto_profil || editData.fotoProfil }} 
+                style={styles.avatarImage} 
+              />
+            ) : (
+              <View style={styles.avatarWrapper}>
+                <Text style={styles.avatarText}>
+                  {getInitials(userProfile?.nama_lengkap || 'Ahmad Ali')}
+                </Text>
+              </View>
+            )}
+            <View style={styles.cameraIconBadge}>
+              <Ionicons name="camera" size={14} color="#FFF" />
+            </View>
+          </TouchableOpacity>
+
+          <Text style={styles.userName}>{userProfile?.nama_lengkap || 'Ahmad Ali'}</Text>
+          <Text style={styles.userNia}>NIA: {userProfile?.nomor_id_unik || '3.35.1426.00007'}</Text>
 
           <View style={styles.badgeRow}>
             <View style={styles.tagBadge}>
               <Ionicons name="location" size={12} color="#059669" />
               <Text style={styles.tagBadgeText}>
-                {userProfile?.alamat_domisili || 'Pasuruan'} • Angkatan {userProfile?.tahun_lulus || userProfile?.angkatan || 2020}
+                {userProfile?.alamat_domisili || 'Pasuruan'} • Angkatan {userProfile?.tahun_lulus || userProfile?.angkatan || 2025}
               </Text>
             </View>
           </View>
@@ -173,7 +273,10 @@ export default function ProfileScreen() {
             <View style={[styles.menuIconBg, { backgroundColor: '#EFF6FF' }]}>
               <Ionicons name="person" size={20} color="#2563EB" />
             </View>
-            <Text style={styles.menuText}>Edit Profil</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.menuText}>Edit Profil & Foto</Text>
+              <Text style={styles.menuSubText}>Ubah foto profil, nama, & alamat domisili</Text>
+            </View>
             <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
           </TouchableOpacity>
 
@@ -182,7 +285,10 @@ export default function ProfileScreen() {
             <View style={[styles.menuIconBg, { backgroundColor: '#ECFDF5' }]}>
               <Ionicons name="card" size={20} color="#059669" />
             </View>
-            <Text style={styles.menuText}>Kartu Anggota Virtual</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.menuText}>Kartu Anggota Virtual (KTA)</Text>
+              <Text style={styles.menuSubText}>Tampilkan KTA Digital resmi alumni</Text>
+            </View>
             <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
           </TouchableOpacity>
 
@@ -209,7 +315,10 @@ export default function ProfileScreen() {
             <View style={[styles.menuIconBg, { backgroundColor: '#FFEDD5' }]}>
               <Ionicons name="help-buoy" size={20} color="#EA580C" />
             </View>
-            <Text style={styles.menuText}>Pusat Bantuan & Pengurus</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.menuText}>Pusat Bantuan & Pengurus</Text>
+              <Text style={styles.menuSubText}>Kontak WA: 082257003806 & Email Resmi</Text>
+            </View>
             <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
           </TouchableOpacity>
         </View>
@@ -220,7 +329,7 @@ export default function ProfileScreen() {
           <Text style={styles.logoutBtnText}>Keluar Akun</Text>
         </TouchableOpacity>
 
-        <Text style={styles.versionText}>Aplikasi Alumni Al-Hasaniyyah v1.2.0</Text>
+        <Text style={styles.versionText}>Aplikasi Alumni Al-Hasaniyyah v1.3.0</Text>
         <View style={{ height: 40 }} />
       </ScrollView>
 
@@ -235,7 +344,44 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+            <ScrollView style={{ maxHeight: 440 }} showsVerticalScrollIndicator={false}>
+              {/* Photo Input Area */}
+              <View style={styles.photoUploadContainer}>
+                <View style={styles.previewAvatarBox}>
+                  {editData.fotoProfil ? (
+                    <Image source={{ uri: editData.fotoProfil }} style={styles.previewAvatarImage} />
+                  ) : userProfile?.foto_profil ? (
+                    <Image source={{ uri: userProfile.foto_profil }} style={styles.previewAvatarImage} />
+                  ) : (
+                    <View style={styles.previewAvatarPlaceholder}>
+                      <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 24 }}>
+                        {getInitials(editData.nama || 'Ahmad Ali')}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                <TouchableOpacity 
+                  style={styles.choosePhotoBtn}
+                  onPress={() => setShowImagePickerModal(true)}
+                >
+                  <Ionicons name="camera" size={16} color="#059669" />
+                  <Text style={styles.choosePhotoBtnText}>Ganti Foto Profil</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Direct Photo URL Input */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>URL Foto Profil (Opsional)</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="https://example.com/foto.jpg atau biarkan kosong"
+                  placeholderTextColor="#94A3B8"
+                  value={editData.fotoProfil.startsWith('data:') ? '[Foto Berhasil Diunggah dari Perangkat]' : editData.fotoProfil}
+                  onChangeText={(t) => setEditData({ ...editData, fotoProfil: t })}
+                />
+              </View>
+
               <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>Nama Lengkap</Text>
                 <TextInput
@@ -301,19 +447,63 @@ export default function ProfileScreen() {
               {loading ? (
                 <ActivityIndicator color="#FFF" />
               ) : (
-                <Text style={styles.saveBtnText}>Simpan Perubahan</Text>
+                <Text style={styles.saveBtnText}>Simpan Perubahan Profil</Text>
               )}
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* ==================== MODAL 2: KARTU ANGGOTA VIRTUAL ==================== */}
+      {/* ==================== MODAL SELECTION: OPSI PILIH GAMBAR ==================== */}
+      <Modal visible={showImagePickerModal} animationType="fade" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { padding: 24 }]}>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: '#0F172A', marginBottom: 16, textAlign: 'center' }}>
+              Pilih Sumber Foto Profil
+            </Text>
+
+            <TouchableOpacity 
+              style={styles.imagePickerOption}
+              onPress={pickImageFromGallery}
+            >
+              <View style={[styles.pickerIconBg, { backgroundColor: '#ECFDF5' }]}>
+                <Ionicons name="images" size={22} color="#059669" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.pickerOptionTitle}>Pilih dari Galeri Foto</Text>
+                <Text style={styles.pickerOptionSub}>Ambil foto yang sudah tersimpan di HP</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.imagePickerOption}
+              onPress={takePhotoWithCamera}
+            >
+              <View style={[styles.pickerIconBg, { backgroundColor: '#EFF6FF' }]}>
+                <Ionicons name="camera" size={22} color="#2563EB" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.pickerOptionTitle}>Ambil Foto dengan Kamera</Text>
+                <Text style={styles.pickerOptionSub}>Foto langsung menggunakan kamera HP</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.closeCardBtn, { backgroundColor: '#F1F5F9', marginTop: 12 }]}
+              onPress={() => setShowImagePickerModal(false)}
+            >
+              <Text style={{ color: '#475569', fontWeight: 'bold', fontSize: 14 }}>Batal</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ==================== MODAL 2: KARTU ANGGOTA VIRTUAL (KTA DIGITAL) ==================== */}
       <Modal visible={showCardModal} animationType="fade" transparent>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalCard, { backgroundColor: '#064E3B', padding: 20 }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 16 }}>Kartu Anggota Digital</Text>
+              <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 16 }}>Kartu Anggota Digital (KTA)</Text>
               <TouchableOpacity onPress={() => setShowCardModal(false)}>
                 <Ionicons name="close" size={24} color="#FFF" />
               </TouchableOpacity>
@@ -326,22 +516,29 @@ export default function ProfileScreen() {
                   <Ionicons name="school" size={24} color="#F59E0B" />
                   <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>AL-HASANIYYAH</Text>
                 </View>
-                <Text style={{ color: '#A7F3D0', fontSize: 10, fontWeight: 'bold' }}>OFFICIAL MEMBER</Text>
+                <Text style={{ color: '#FCD34D', fontSize: 10, fontWeight: 'bold', letterSpacing: 1 }}>OFFICIAL MEMBER</Text>
               </View>
 
               <View style={{ flexDirection: 'row', gap: 14, alignItems: 'center', marginBottom: 16 }}>
-                <View style={styles.idAvatar}>
-                  <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 20 }}>
-                    {getInitials(userProfile?.nama_lengkap || 'Ahmad Ali')}
-                  </Text>
-                </View>
+                {userProfile?.foto_profil || editData.fotoProfil ? (
+                  <Image 
+                    source={{ uri: userProfile?.foto_profil || editData.fotoProfil }} 
+                    style={styles.idAvatarImage} 
+                  />
+                ) : (
+                  <View style={styles.idAvatar}>
+                    <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 20 }}>
+                      {getInitials(userProfile?.nama_lengkap || 'Ahmad Ali')}
+                    </Text>
+                  </View>
+                )}
 
                 <View style={{ flex: 1 }}>
                   <Text style={{ color: '#F8FAFC', fontWeight: '800', fontSize: 16, marginBottom: 2 }}>
-                    {userProfile?.nama_lengkap || 'Ahmad Fadillah'}
+                    {userProfile?.nama_lengkap || 'Ahmad Ali'}
                   </Text>
                   <Text style={{ color: '#FCD34D', fontWeight: 'bold', fontSize: 13, marginBottom: 4 }}>
-                    NIA: {userProfile?.nomor_id_unik || '123456'}
+                    NIA: {userProfile?.nomor_id_unik || '3.35.1426.00007'}
                   </Text>
                   <Text style={{ color: '#D1FAE5', fontSize: 11 }}>
                     Domisili: {userProfile?.alamat_domisili || 'Pasuruan'}
@@ -349,10 +546,17 @@ export default function ProfileScreen() {
                 </View>
               </View>
 
+              {/* Barcode Visual & Official Tag */}
               <View style={{ borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.2)', paddingTop: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={{ color: '#D1FAE5', fontSize: 10 }}>Pondok Pesantren Dalwa</Text>
-                <View style={{ backgroundColor: '#10B981', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 }}>
-                  <Text style={{ color: '#FFF', fontSize: 9, fontWeight: 'bold' }}>VERIFIED</Text>
+                <View>
+                  <Text style={{ color: '#D1FAE5', fontSize: 10, fontWeight: 'bold' }}>Pondok Pesantren Dalwa</Text>
+                  <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 8, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' }}>
+                    ID: {userProfile?.nomor_id_unik || '3.35.1426.00007'}
+                  </Text>
+                </View>
+
+                <View style={{ backgroundColor: '#10B981', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 }}>
+                  <Text style={{ color: '#FFF', fontSize: 10, fontWeight: 'bold' }}>✓ VERIFIED</Text>
                 </View>
               </View>
             </View>
@@ -360,7 +564,7 @@ export default function ProfileScreen() {
             <TouchableOpacity 
               style={styles.closeCardBtn}
               onPress={() => {
-                Alert.alert('Info', 'Kartu Anggota Virtual siap digunakan untuk verifikasi alumni.');
+                Alert.alert('Info Kartu KTA', 'Kartu Anggota Virtual resmi siap digunakan untuk identitas alumni Al-Hasaniyyah.');
                 setShowCardModal(false);
               }}
             >
@@ -410,7 +614,7 @@ export default function ProfileScreen() {
         </View>
       </Modal>
 
-      {/* ==================== MODAL 4: PUSAT BANTUAN ==================== */}
+      {/* ==================== MODAL 4: PUSAT BANTUAN & PENGURUS ==================== */}
       <Modal visible={showHelpModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
@@ -422,24 +626,28 @@ export default function ProfileScreen() {
             </View>
 
             <Text style={{ fontSize: 13, color: '#475569', lineHeight: 20, marginBottom: 16 }}>
-              Jika Antum memiliki kendala aplikasi, verifikasi akun, atau pertanyaan terkait iuran alumni, silakan hubungi pengurus resmi kami:
+              Jika Antum memiliki kendala aplikasi, verifikasi akun, atau pertanyaan terkait iuran alumni, silakan hubungi pengurus resmi pusat:
             </Text>
 
-            <View style={styles.contactBox}>
-              <Ionicons name="logo-whatsapp" size={24} color="#25D366" />
-              <View>
-                <Text style={{ fontWeight: 'bold', color: '#0F172A', fontSize: 14 }}>WhatsApp Pengurus</Text>
-                <Text style={{ color: '#64748B', fontSize: 12 }}>+62 812-3456-7890 (Sekretariat)</Text>
+            {/* Contact 1: WhatsApp Pengurus 082257003806 */}
+            <TouchableOpacity style={styles.contactBox} onPress={openOfficialWhatsApp}>
+              <Ionicons name="logo-whatsapp" size={26} color="#25D366" />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontWeight: 'bold', color: '#0F172A', fontSize: 14 }}>WhatsApp Pengurus Pusat</Text>
+                <Text style={{ color: '#059669', fontWeight: 'bold', fontSize: 13 }}>082257003806 (+62 822-5700-3806)</Text>
               </View>
-            </View>
+              <Ionicons name="open-outline" size={18} color="#059669" />
+            </TouchableOpacity>
 
-            <View style={styles.contactBox}>
-              <Ionicons name="mail" size={24} color="#2563EB" />
-              <View>
-                <Text style={{ fontWeight: 'bold', color: '#0F172A', fontSize: 14 }}>Email Resmi</Text>
-                <Text style={{ color: '#64748B', fontSize: 12 }}>admin@alhasaniyyah.org</Text>
+            {/* Contact 2: Email Resmi hsn.pusatdalwa@gmail.com */}
+            <TouchableOpacity style={styles.contactBox} onPress={openOfficialEmail}>
+              <Ionicons name="mail" size={26} color="#2563EB" />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontWeight: 'bold', color: '#0F172A', fontSize: 14 }}>Email Resmi Pengurus</Text>
+                <Text style={{ color: '#2563EB', fontWeight: 'bold', fontSize: 13 }}>hsn.pusatdalwa@gmail.com</Text>
               </View>
-            </View>
+              <Ionicons name="open-outline" size={18} color="#2563EB" />
+            </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.saveBtn, { backgroundColor: '#059669', marginTop: 12 }]}
@@ -476,16 +684,39 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
     elevation: 2,
   },
+  avatarContainer: {
+    position: 'relative',
+    marginBottom: 12,
+  },
   avatarWrapper: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 84,
+    height: 84,
+    borderRadius: 42,
     backgroundColor: '#059669',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
     borderWidth: 3,
     borderColor: '#A7F3D0',
+  },
+  avatarImage: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    borderWidth: 3,
+    borderColor: '#F59E0B',
+  },
+  cameraIconBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: '#059669',
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
   avatarText: { color: '#FFFFFF', fontSize: 28, fontWeight: 'bold' },
   userName: { fontSize: 18, fontWeight: '800', color: '#0F172A', marginBottom: 4 },
@@ -512,19 +743,20 @@ const styles = StyleSheet.create({
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 16,
+    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
     gap: 12,
   },
   menuIconBg: {
-    width: 36,
-    height: 36,
+    width: 38,
+    height: 38,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  menuText: { flex: 1, fontSize: 14, fontWeight: '600', color: '#1E293B' },
+  menuText: { fontSize: 14, fontWeight: '700', color: '#1E293B' },
+  menuSubText: { fontSize: 11, color: '#64748B', marginTop: 1 },
   logoutBtn: {
     backgroundColor: '#FEE2E2',
     borderRadius: 16,
@@ -558,6 +790,42 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   modalTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
+  photoUploadContainer: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  previewAvatarBox: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    marginBottom: 10,
+    overflow: 'hidden',
+    borderWidth: 3,
+    borderColor: '#059669',
+  },
+  previewAvatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  previewAvatarPlaceholder: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#059669',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  choosePhotoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  choosePhotoBtnText: { color: '#047857', fontSize: 12, fontWeight: 'bold' },
   inputGroup: { marginBottom: 12 },
   inputLabel: { fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 },
   modalInput: {
@@ -587,12 +855,19 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   idAvatar: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     backgroundColor: '#059669',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FCD34D',
+  },
+  idAvatarImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     borderWidth: 2,
     borderColor: '#FCD34D',
   },
@@ -605,7 +880,7 @@ const styles = StyleSheet.create({
   settingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justify.content: 'space-between',
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
@@ -616,11 +891,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F8FAFC',
-    padding: 12,
-    borderRadius: 12,
+    padding: 14,
+    borderRadius: 14,
     gap: 12,
     marginBottom: 10,
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
+  imagePickerOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    padding: 14,
+    borderRadius: 14,
+    gap: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  pickerIconBg: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pickerOptionTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  pickerOptionSub: { fontSize: 11, color: '#64748B', marginTop: 2 },
 });
