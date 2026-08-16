@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   View, 
   Text, 
@@ -15,7 +15,7 @@ import {
   Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
@@ -77,6 +77,12 @@ export default function ProfileScreen() {
   useEffect(() => {
     loadProfile();
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadProfile();
+    }, [])
+  );
 
   // Universal Image Picker (Supports HTML5 File Reader on Web + Expo ImagePicker on Mobile)
   const pickImageFromGallery = async () => {
