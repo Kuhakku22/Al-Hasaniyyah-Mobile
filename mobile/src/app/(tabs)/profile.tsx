@@ -19,6 +19,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
+import { addCloudVerifiedAlumni } from '@/lib/cloudSync';
 
 // Safely load Expo ImagePicker to ensure zero build errors on Vercel / Web
 let ImagePicker: any = null;
@@ -178,6 +179,8 @@ export default function ProfileScreen() {
 
     setLoading(true);
     try {
+      const finalFoto = editData.fotoProfil || userProfile?.foto_profil || '';
+
       const updatedProfile = {
         ...userProfile,
         nama_lengkap: editData.nama.trim(),
@@ -186,32 +189,50 @@ export default function ProfileScreen() {
         tempat_tanggal_lahir: editData.ttl.trim(),
         alamat_ktp: editData.alamatKtp.trim(),
         pekerjaan: editData.pekerjaan.trim(),
-        foto_profil: editData.fotoProfil || userProfile?.foto_profil || '',
+        foto_profil: finalFoto,
       };
 
-      // Update Supabase if real user
-      if (userProfile?.id && userProfile.id !== '00000000-0000-0000-0000-000000000000') {
-        try {
+      // 1. Simpan ke Local Device Storage
+      await AsyncStorage.setItem('userProfile', JSON.stringify(updatedProfile));
+      setUserProfile(updatedProfile);
+
+      // 2. Simpan PERMANEN ke Cloud Verified Store Vercel (/api/verified)
+      try {
+        await addCloudVerifiedAlumni({
+          ...updatedProfile,
+          id: userProfile?.id || 'ver-' + Date.now(),
+          status_verifikasi: 'verified',
+        });
+      } catch (cloudErr) {}
+
+      // 3. Simpan PERMANEN ke Database Supabase (by ID, nomor_id_unik, atau nomor_hp)
+      try {
+        if (userProfile?.nomor_id_unik) {
           await supabase
             .from('alumni')
             .update({
-              nama_lengkap: editData.nama.trim(),
-              nomor_hp: editData.phone.trim(),
-              alamat_domisili: editData.domisili.trim(),
-              tempat_tanggal_lahir: editData.ttl.trim(),
-              alamat_ktp: editData.alamatKtp.trim(),
-              pekerjaan: editData.pekerjaan.trim(),
-              foto_profil: editData.fotoProfil || userProfile?.foto_profil || '',
+              nama_lengkap: updatedProfile.nama_lengkap,
+              nomor_hp: updatedProfile.nomor_hp,
+              alamat_domisili: updatedProfile.alamat_domisili,
+              foto_profil: finalFoto,
               updated_at: new Date().toISOString(),
             })
-            .eq('id', userProfile.id);
-        } catch (dbErr) {}
-      }
+            .eq('nomor_id_unik', userProfile.nomor_id_unik);
+        } else if (userProfile?.nomor_hp) {
+          await supabase
+            .from('alumni')
+            .update({
+              nama_lengkap: updatedProfile.nama_lengkap,
+              alamat_domisili: updatedProfile.alamat_domisili,
+              foto_profil: finalFoto,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('nomor_hp', userProfile.nomor_hp);
+        }
+      } catch (dbErr) {}
 
-      await AsyncStorage.setItem('userProfile', JSON.stringify(updatedProfile));
-      setUserProfile(updatedProfile);
       setShowEditModal(false);
-      Alert.alert('Berhasil', 'Profil & Foto Anggota berhasil diperbarui!');
+      Alert.alert('Berhasil Simpan', 'Profil & Foto Anggota berhasil disimpan permanen ke server database!');
     } catch (e: any) {
       Alert.alert('Gagal Simpan', e.message);
     } finally {

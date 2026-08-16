@@ -143,8 +143,15 @@ export default function LoginScreen() {
       if (foundById) {
         // Validasi apakah Nama cocok dengan ID yang ditemukan
         if (checkNameMatchAccurate(foundById.nama_lengkap)) {
+          const storedOld = await AsyncStorage.getItem('userProfile').catch(() => null);
+          const parsedOld = storedOld ? JSON.parse(storedOld) : null;
+          const mergedProfile = {
+            ...foundById,
+            foto_profil: foundById.foto_profil || (parsedOld?.nomor_id_unik === foundById.nomor_id_unik ? parsedOld?.foto_profil : '') || '',
+          };
+
           await AsyncStorage.setItem('userToken', foundById.id || 'usr-' + Date.now());
-          await AsyncStorage.setItem('userProfile', JSON.stringify(foundById));
+          await AsyncStorage.setItem('userProfile', JSON.stringify(mergedProfile));
           Alert.alert('Login Berhasil', `Selamat datang, ${foundById.nama_lengkap}!`);
           router.replace('/(tabs)/home');
           return;
@@ -172,8 +179,15 @@ export default function LoginScreen() {
         const matchPhone = cleanDigits.length >= 4 && (phoneClean.endsWith(cleanDigits) || phoneClean.includes(cleanDigits));
 
         if (matchNiaExact || matchNiaDigits || matchPhone) {
+          const storedOld = await AsyncStorage.getItem('userProfile').catch(() => null);
+          const parsedOld = storedOld ? JSON.parse(storedOld) : null;
+          const mergedProfile = {
+            ...foundByName,
+            foto_profil: foundByName.foto_profil || (parsedOld?.nomor_id_unik === foundByName.nomor_id_unik ? parsedOld?.foto_profil : '') || '',
+          };
+
           await AsyncStorage.setItem('userToken', foundByName.id || 'usr-' + Date.now());
-          await AsyncStorage.setItem('userProfile', JSON.stringify(foundByName));
+          await AsyncStorage.setItem('userProfile', JSON.stringify(mergedProfile));
           Alert.alert('Login Berhasil', `Selamat datang, ${foundByName.nama_lengkap}!`);
           router.replace('/(tabs)/home');
           return;
