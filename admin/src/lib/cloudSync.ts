@@ -10,6 +10,7 @@ export interface PendingRegistration {
   alamat_domisili: string | null;
   status_verifikasi: string;
   nomor_hp: string | null;
+  foto_profil?: string | null;
   tahun_masuk?: number | null;
   tahun_keluar?: number | null;
   created_at: string;
